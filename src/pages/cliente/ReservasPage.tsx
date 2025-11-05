@@ -164,10 +164,11 @@ export default function ReservasPage() {
     
     try {
       setCancelando(true);
-      // TODO: Implementar endpoint DELETE /reservations/{id} cuando esté disponible
-      // await api.delete(`/reservations/${reservaSeleccionada.id}`);
       
-      // Por ahora, actualizar localmente
+      // Llamar al endpoint DELETE del backend
+      await api.delete(`/reservations/${reservaSeleccionada.id}`);
+      
+      // Actualizar el estado local para reflejar la cancelación
       setReservas(prevReservas =>
         prevReservas.map(r =>
           r.id === reservaSeleccionada.id ? { ...r, estado: 'CANCELADA' as ReservaStatus } : r
@@ -178,7 +179,8 @@ export default function ReservasPage() {
       setReservaSeleccionada(null);
     } catch (error) {
       console.error('Error al cancelar reserva:', error);
-      alert('No se pudo cancelar la reserva. Por favor intente nuevamente.');
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo cancelar la reserva: ${errorMessage}\n\nPor favor intente nuevamente.`);
     } finally {
       setCancelando(false);
     }
@@ -387,9 +389,13 @@ export default function ReservasPage() {
                           variant="destructive"
                           className="w-full bg-red-500 hover:bg-red-600 text-xs md:text-sm"
                           onClick={() => handleCancelar(reserva)}
+                          disabled={cancelando && reservaSeleccionada?.id === reserva.id}
                           aria-label={`Cancelar reserva ${reserva.id}`}
                         >
-                          Cancelar Reserva
+                          {cancelando && reservaSeleccionada?.id === reserva.id 
+                            ? 'Cancelando...' 
+                            : 'Cancelar Reserva'
+                          }
                         </Button>
                       </div>
                     )}
@@ -448,12 +454,20 @@ export default function ReservasPage() {
       </main>
 
       {/* Dialog de Cancelación */}
-      <Dialog open={showCancelarDialog} onOpenChange={setShowCancelarDialog}>
+      <Dialog open={showCancelarDialog} onOpenChange={(open) => {
+        // Prevenir cierre del diálogo mientras se está cancelando
+        if (!cancelando) {
+          setShowCancelarDialog(open);
+        }
+      }}>
         <DialogContent className="sm:max-w-md mx-4">
           <DialogHeader>
             <DialogTitle className="text-lg md:text-xl">Cancelar Reserva</DialogTitle>
             <DialogDescription className="text-sm md:text-base">
-              ¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.
+              {cancelando 
+                ? 'Procesando cancelación...' 
+                : '¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.'
+              }
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col sm:flex-row gap-3 justify-end mt-4">
