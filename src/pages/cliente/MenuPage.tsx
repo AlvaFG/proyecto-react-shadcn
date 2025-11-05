@@ -1,3 +1,4 @@
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Card, CardContent } from '../../components/ui/card';
@@ -5,18 +6,38 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { User, LogOut, Clock, ArrowLeft, UtensilsCrossed } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
-import { consumibles, sedes } from '../../lib/data/mockData';
 
-const horarios = [
-  { id: 'desayuno', nombre: 'Desayuno', horario: '07:00-11:00' },
-  { id: 'almuerzo', nombre: 'Almuerzo', horario: '12:00-15:00' },
-  { id: 'merienda', nombre: 'Merienda', horario: '16:00-19:00' },
-  { id: 'cena', nombre: 'Cena', horario: '20:00-22:00' },
-];
+import { api } from '@/lib/http'
+import type { Sede } from '@/types'
+import { HORARIOS_SERVICIO } from '@/lib/config'
+import { consumibles } from '../../lib/data/mockData'
 
 export default function MenuPage() {
+
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const [sedesState, setSedesState] = useState<Sede[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
+        const data = await api.get<LocationApi[]>('/locations');
+        const mapped: Sede[] = (data || []).map(l => ({
+          id: String(l.id),
+          nombre: l.name,
+          direccion: l.address,
+          capacidad: l.capacity,
+          imagen: l.imageUrl,
+        }));
+        setSedesState(mapped);
+      } catch (_) {
+        // si falla, sedesState queda vacío y se usa el mock
+      }
+    })();
+  }, []);
+
+  const sedesList: Sede[] = sedesState;
 
   const platos = consumibles.filter(c => c.tipo === 'plato');
   const bebidas = consumibles.filter(c => c.tipo === 'bebida');
@@ -106,7 +127,7 @@ export default function MenuPage() {
               <span className="font-semibold text-sm md:text-base text-gray-700">Horarios de Servicio</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              {horarios.map((horario) => (
+              {HORARIOS_SERVICIO.map((horario) => (
                 <div key={horario.id} className="border rounded-lg p-3 bg-gray-50 text-left">
                   <p className="font-semibold text-sm text-gray-800">{horario.nombre}</p>
                   <p className="text-xs text-gray-600 mt-1">{horario.horario}</p>
@@ -121,7 +142,7 @@ export default function MenuPage() {
           <CardContent className="p-4 md:p-6">
             <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-3 md:mb-4 text-left">Comedores Disponibles</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-              {sedes.map((sede) => (
+              {sedesList.map((sede) => (
                 <div key={sede.id} className="border rounded-lg p-3 md:p-4 hover:shadow-md transition-shadow text-left">
                   <h4 className="font-semibold text-sm md:text-base text-gray-800">{sede.nombre}</h4>
                   <p className="text-xs md:text-sm text-gray-600 mt-1">{sede.direccion}</p>

@@ -1,5 +1,5 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-import { API_BASE_URL } from './env';
+import { API_BASE_URL, isDev } from './env';
 
 interface RequestOptions extends RequestInit {
   query?: Record<string, string | number | boolean | undefined>;
@@ -7,9 +7,20 @@ interface RequestOptions extends RequestInit {
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']) {
-  const cleanBase = API_BASE_URL.replace(/\/+$/, '');
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(cleanBase + cleanPath);
+  let urlStr: string;
+  if (/^https?:\/\//i.test(path)) {
+    urlStr = path;
+  } else if (isDev && path.startsWith('/')) {
+    // En desarrollo, usar ruta relativa para aprovechar el proxy de Vite
+    urlStr = path; // ej: /api/... será proxied a VITE_API_BASE_URL
+  } else {
+    // En producción, si el path viene como "/api/...", quitar el prefijo para apuntar al root del BE
+    const normalized = (!isDev && path.startsWith('/api/')) ? path.substring(4) : path;
+    const cleanBase = API_BASE_URL.replace(/\/+$/, '');
+    const cleanPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    urlStr = cleanBase + cleanPath;
+  }
+  const url = new URL(urlStr, typeof window !== 'undefined' ? window.location.origin : undefined);
   if (query) {
     Object.entries(query).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v));

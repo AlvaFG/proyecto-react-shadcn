@@ -1,10 +1,37 @@
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+
 import { Menu, Calendar, ClipboardList } from 'lucide-react';
+
+import { api } from '@/lib/http';
+import type { Sede } from '@/types';
 
 export default function ClienteDashboardPage() {
   const navigate = useNavigate();
+  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setError(null);
+        type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
+        const data = await api.get<LocationApi[]>('/locations');
+        const mapped: Sede[] = (data || []).map(l => ({
+          id: String(l.id),
+          nombre: l.name,
+          direccion: l.address,
+          capacidad: l.capacity,
+          imagen: (l as any).imageUrl,
+        }));
+        setSedes(mapped);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'No se pudieron cargar las sedes');
+      }
+    })();
+  }, []);
 
   return (
     <div className="bg-[#E8DED4] min-h-[calc(100vh-4rem)]">
@@ -88,22 +115,22 @@ export default function ClienteDashboardPage() {
               <CardTitle className="text-[#1E3A5F]">Información de Sedes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-[#1E3A5F] mb-2">Sede Centro</h3>
-                  <p className="text-sm text-gray-600 mb-1">Calle Principal 123</p>
-                  <p className="text-sm text-gray-600">
-                    Horarios: 12:00 - 15:00 / 19:00 - 22:00
-                  </p>
+              {error ? (
+                <div className="text-sm text-red-600">{error}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {sedes.map((sede) => (
+                    <div key={sede.id}>
+                      <h3 className="font-semibold text-[#1E3A5F] mb-2">{sede.nombre}</h3>
+                      <p className="text-sm text-gray-600 mb-1">{sede.direccion}</p>
+                      <p className="text-sm text-gray-600">Capacidad: {sede.capacidad} personas</p>
+                    </div>
+                  ))}
+                  {sedes.length === 0 && !error && (
+                    <div className="text-sm text-gray-600">No hay sedes disponibles.</div>
+                  )}
                 </div>
-                <div>
-                  <h3 className="font-semibold text-[#1E3A5F] mb-2">Sede Norte</h3>
-                  <p className="text-sm text-gray-600 mb-1">Avenida Norte 456</p>
-                  <p className="text-sm text-gray-600">
-                    Horarios: 12:00 - 15:00 / 19:00 - 22:00
-                  </p>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
