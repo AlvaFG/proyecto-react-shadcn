@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "tsc -b && vite build --mode production",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:prod": "vite preview --mode production",
+    "verify": "node verify-config.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
