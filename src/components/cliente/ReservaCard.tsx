@@ -2,8 +2,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../../comp
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Calendar, Clock, MapPin, DollarSign } from 'lucide-react';
-import type { Reserva } from '../../types';
-import { sedes, turnos } from '../../lib/data/';
+import type { Reserva, Sede, Turno } from '../../types';
+import { RESERVA_STATUS_CLASS, RESERVA_STATUS_LABEL } from '../../types';
+import { sedes, turnos } from '../../lib/data/mockData';
 import { formatFechaLargaEs } from '../../lib/date';
 
 interface ReservaCardProps {
@@ -12,24 +13,17 @@ interface ReservaCardProps {
   onCancelar?: (reserva: Reserva) => void;
 }
 
-const estadoColors = {
-  pendiente: 'bg-yellow-100 text-yellow-800',
-  confirmada: 'bg-blue-100 text-blue-800',
-  pagada: 'bg-green-100 text-green-800',
-  cancelada: 'bg-red-100 text-red-800',
-};
-
 export default function ReservaCard({ reserva, onVerDetalles, onCancelar }: ReservaCardProps) {
-  const sede = sedes.find((s) => s.id === reserva.sedeId);
-  const turno = turnos.find((t) => t.id === reserva.turnoId);
+  const sede = sedes.find((s: Sede) => s.id === reserva.sedeId);
+  const turno = turnos.find((t: Turno) => t.id === reserva.turnoId);
 
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg">Reserva #{reserva.id}</CardTitle>
-          <Badge className={estadoColors[reserva.estado]}>
-            {reserva.estado.charAt(0).toUpperCase() + reserva.estado.slice(1)}
+          <Badge className={RESERVA_STATUS_CLASS[reserva.estado]}>
+            {RESERVA_STATUS_LABEL[reserva.estado]}
           </Badge>
         </div>
       </CardHeader>
@@ -62,7 +56,7 @@ export default function ReservaCard({ reserva, onVerDetalles, onCancelar }: Rese
             Ver Detalles
           </Button>
         )}
-        {onCancelar && reserva.estado === 'pendiente' && (
+        {onCancelar && reserva.estado === 'ACTIVA' && (
           <Button variant="destructive" className="flex-1" onClick={() => onCancelar(reserva)}>
             Cancelar
           </Button>
