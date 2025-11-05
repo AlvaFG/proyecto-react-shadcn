@@ -11,11 +11,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Edit, Trash2, User, LogOut, Utensils, Wine, Cake, Home, Search } from 'lucide-react';
 import { useAuthStore, useChefConsumiblesStore, useChefMenuStore } from '../../lib/store';
 import type { Consumible } from '../../types';
+import { createProduct, type ProductInput } from '../../services/products';
+import { useEffect } from 'react';
+import { getProducts } from '../../services/products';
+
 
 export default function ConsumiblesPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { consumibles, addConsumible, updateConsumible, deleteConsumible } = useChefConsumiblesStore();
+  const { consumibles, setConsumibles, addConsumible, updateConsumible, deleteConsumible } =
+  useChefConsumiblesStore();
   const removeConsumibleFromMenus = useChefMenuStore((state) => state.removeConsumibleFromMenus);
   const [showDialog, setShowDialog] = useState(false);
   const [editingConsumible, setEditingConsumible] = useState<Consumible | null>(null);
@@ -25,7 +30,6 @@ export default function ConsumiblesPage() {
     descripcion: '',
     precio: 0,
     disponible: true,
-    categoria: '',
     imagen: '',
   });
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -57,7 +61,6 @@ export default function ConsumiblesPage() {
       descripcion: '',
       precio: 0,
       disponible: true,
-      categoria: '',
       imagen: '',
     });
     setShowDialog(true);
@@ -99,7 +102,7 @@ export default function ConsumiblesPage() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setFormData((prev) => ({ ...prev, imagen: reader.result }));
+        setFormData((prev) => ({ ...prev, imagen: reader.result as string })); // 👈 cast
       }
     };
     reader.readAsDataURL(file);
@@ -111,55 +114,61 @@ export default function ConsumiblesPage() {
     setFormData((prev) => ({ ...prev, imagen: '' }));
   };
 
+const handleSave = async () => {
+  const nombre = (formData.nombre ?? '').trim();
+  const parsedPrice = Number(formData.precio);
 
-  const handleSave = () => {
-    const nombre = formData.nombre?.trim() || '';
-    const parsedPrice = Number(formData.precio);
+  if (!nombre || Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+    alert('Complete todos los campos requeridos');
+    return;
+  }
 
-    if (!nombre || Number.isNaN(parsedPrice) || parsedPrice <= 0) {
-      alert('Complete todos los campos requeridos');
-      return;
-    }
+  // mapear tipo UI -> backend
+  const mapTipo: Record<'plato' | 'bebida' | 'postre', 'PLATO' | 'BEBIDA' | 'POSTRE'> = {
+    plato: 'PLATO',
+    bebida: 'BEBIDA',
+    postre: 'POSTRE',
+  };
 
-    const tipo = (formData.tipo as 'plato' | 'bebida' | 'postre') || 'plato';
-    const descripcion = (formData.descripcion ?? '').trim();
-    const categoria = formData.categoria?.trim();
-    const disponible = formData.disponible ?? true;
-    const imagen = formData.imagen?.toString().trim() || undefined;
+  const tipoUi = (formData.tipo as 'plato' | 'bebida' | 'postre') || 'plato';
+  const productType = mapTipo[tipoUi];
+  const description = (formData.descripcion ?? '').trim();
+  const imageUrl = (formData.imagen ?? '').toString().trim() || undefined;
 
-    if (editingConsumible) {
-      updateConsumible(editingConsumible.id, {
-        nombre,
-        tipo,
-        descripcion,
-        precio: parsedPrice,
-        disponible,
-        categoria: categoria || undefined,
-        imagen,
-      });
-    } else {
-      const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `consumible-${Date.now()}`;
+  const dto: ProductInput = {
+    name: nombre,
+    price: parsedPrice,
+    description,
+    productType,
+    imageUrl,
+    active: true,
+  };
 
-      const nuevoConsumible: Consumible = {
-        id,
-        nombre,
-        tipo,
-        descripcion,
-        precio: parsedPrice,
-        disponible,
-        categoria: categoria || undefined,
-        imagen,
-      };
+  try {
+    // 1) crear en backend
+    const created = await createProduct(dto);
 
-      addConsumible(nuevoConsumible);
-    }
+    // 2) adaptar respuesta a tu store (Consumible) y agregarlo a la lista actual
+    const nuevoConsumible = {
+      id: created.id.toString(),
+      nombre: created.name,
+      tipo: tipoUi, // mantenemos el tipo de la UI para tus filtros
+      descripcion: created.description,
+      precio: created.price,
+      disponible: true,
+      imagen: created.imageUrl || imageUrl,
+    };
 
+    addConsumible(nuevoConsumible);
+
+    // 3) cerrar modal y limpiar
     setShowDialog(false);
     setEditingConsumible(null);
     setSelectedImageFile(null);
-  };
+  } catch (e: any) {
+    alert(e?.message || 'No se pudo crear el consumible');
+  }
+};
 
   const handleDialogToggle = (open: boolean) => {
     setShowDialog(open);
@@ -205,11 +214,7 @@ export default function ConsumiblesPage() {
             {consumible.descripcion}
           </CardDescription>
         )}
-        {consumible.categoria && (
-          <CardDescription className="text-sm">
-            {consumible.categoria}
-          </CardDescription>
-        )}
+
       </CardHeader>
       <CardContent className="pt-0">
         <div className="flex items-center justify-between">
@@ -238,6 +243,37 @@ export default function ConsumiblesPage() {
       </CardContent>
     </Card>
   );
+
+  useEffect(() => {
+  const fetchConsumibles = async () => {
+    try {
+      const productos = await getProducts();
+
+      const adaptados: Consumible[] = productos.map((p) => ({
+        id: p.id.toString(),
+        nombre: p.name,
+        tipo:
+          p.productType === 'PLATO'
+            ? 'plato'
+            : p.productType === 'BEBIDA'
+            ? 'bebida'
+            : 'postre',
+        descripcion: p.description || '',
+        precio: p.price,
+        disponible: p.active ?? true,
+        imagen: p.imageUrl || '',
+      }));
+
+      // ⬇️ ahora reemplazamos la lista completa
+      setConsumibles(adaptados);
+    } catch (err) {
+      console.error('Error cargando productos:', err);
+      alert('No se pudieron cargar los productos desde el servidor.');
+    }
+  };
+
+  fetchConsumibles();
+}, [setConsumibles]);
 
   return (
     <div className="min-h-screen bg-[#E8DED4]">
@@ -464,14 +500,15 @@ export default function ConsumiblesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="categoria">Categoría del consumible</Label>
-              <Input
-                id="categoria"
-                value={formData.categoria}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, categoria: e.target.value })
+              <Label htmlFor="descripcion">Descripción *</Label>
+              <textarea
+                id="descripcion"
+                value={formData.descripcion}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData({ ...formData, descripcion: e.target.value })
                 }
-                placeholder="Ej: Principal, Entrada, etc."
+                placeholder="Ej: Milanesa de ternera con papas fritas"
+                className="w-full border rounded-md p-2 min-h-[80px]"
               />
             </div>
 
@@ -536,10 +573,3 @@ export default function ConsumiblesPage() {
     </div>
   );
 }
-
-
-
-
-
-
-

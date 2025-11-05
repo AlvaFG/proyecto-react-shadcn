@@ -246,11 +246,13 @@ const createEmptyChefMenus = (): ChefMenusSemana => ({
 
 interface ChefConsumiblesState {
   consumibles: Consumible[];
+  setConsumibles: (items: Consumible[]) => void;
   addConsumible: (consumible: Consumible) => void;
   updateConsumible: (id: string, data: Partial<Consumible>) => void;
   deleteConsumible: (id: string) => void;
   toggleDisponibilidad: (id: string) => void;
-  resetConsumibles: () => void;
+  resetConsumibles: () => void; 
+  // dejé resetConsumibles() que carga los mocks (cloneChefConsumibles()) solo si querés usarlos en pruebas. Si no lo usás más, podés borrarlo junto con cloneChefConsumibles e import de mockData.
 }
 
 interface ChefMenuState {
@@ -263,42 +265,51 @@ interface ChefMenuState {
 
 export const useChefConsumiblesStore = create<ChefConsumiblesState>()(
   persist(
-    (set) => ({
-      consumibles: cloneChefConsumibles(),
+    (set, get) => ({
+      // Arrancamos SIN mocks para que cargue lo real del backend
+      consumibles: [],
+
+      // Setter para reemplazar toda la lista (lo vas a usar en el useEffect)
+      setConsumibles: (items) => set({ consumibles: items }),
+
       addConsumible: (consumible) =>
         set((state) => ({ consumibles: [...state.consumibles, consumible] })),
+
       updateConsumible: (id, data) =>
         set((state) => ({
           consumibles: state.consumibles.map((item) =>
             item.id === id ? { ...item, ...data } : item
           ),
         })),
+
       deleteConsumible: (id) =>
         set((state) => ({
           consumibles: state.consumibles.filter((item) => item.id !== id),
         })),
+
       toggleDisponibilidad: (id) =>
         set((state) => ({
           consumibles: state.consumibles.map((item) =>
             item.id === id ? { ...item, disponible: !item.disponible } : item
           ),
         })),
+
+      // ⬇️ Si querés volver a los mocks para demos rápidas
       resetConsumibles: () => set({ consumibles: cloneChefConsumibles() }),
     }),
     {
       name: 'chef-consumibles-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 1,
-      migrate: (state, _version) => {
-        if (!state) {
-          return { consumibles: cloneChefConsumibles() };
+      version: 2, // ⬅️ subimos versión para forzar migración
+      migrate: (state, version) => {
+        // Si venías de una versión con mocks persistidos, normalizamos a array vacío
+        if (!state || typeof state !== 'object') {
+          return { consumibles: [] };
         }
-
-        // Asegura que siempre exista la lista de consumibles
-        if (!Array.isArray((state as ChefConsumiblesState).consumibles)) {
-          return { consumibles: cloneChefConsumibles() };
+        const s = state as Partial<ChefConsumiblesState>;
+        if (!Array.isArray(s.consumibles)) {
+          return { consumibles: [] };
         }
-
         return state as ChefConsumiblesState;
       },
     }
