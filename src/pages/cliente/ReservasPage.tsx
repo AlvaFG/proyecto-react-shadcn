@@ -7,6 +7,7 @@ import { Badge } from '../../components/ui/badge';
 import { useAuthStore, useReservaStore } from '../../lib/store';
 import { MapPin, Clock, AlertTriangle, Plus, ArrowLeft, User, LogOut } from 'lucide-react';
 import { sedes, turnos } from '../../lib/data/mockData';
+import { parseISODateLocal, formatFechaLargaEs } from '../../lib/date';
 import type { Reserva, ReservaStatus } from '../../types';
 import { RESERVA_STATUS_LABEL, RESERVA_STATUS_CLASS } from '../../types';
 
@@ -18,6 +19,8 @@ export default function ReservasPage() {
   
   const [reservaSeleccionada, setReservaSeleccionada] = useState<Reserva | null>(null);
   const [showCancelarDialog, setShowCancelarDialog] = useState(false);
+
+  // Nota: usamos helpers compartidos en lib/date para evitar desfases por UTC.
 
   // Filtrar y ordenar: ACTIVAS primero, luego FINALIZADAS, luego CANCELADAS
   const misReservas = reservas
@@ -34,10 +37,10 @@ export default function ReservasPage() {
       
       // Dentro del mismo estado, ordenar por fecha (más próximas primero para ACTIVAS)
       if (a.estado === 'ACTIVA') {
-        return new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
+        return parseISODateLocal(a.fecha).getTime() - parseISODateLocal(b.fecha).getTime();
       }
       // Para FINALIZADAS y CANCELADAS, más recientes primero
-      return new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
+      return parseISODateLocal(b.fecha).getTime() - parseISODateLocal(a.fecha).getTime();
     });
 
   const handleCancelar = (reserva: Reserva) => {
@@ -63,7 +66,7 @@ export default function ReservasPage() {
       ...(reserva.slotStart && { slotStart: reserva.slotStart }),
       ...(reserva.slotEnd && { slotEnd: reserva.slotEnd }),
     });
-    navigate(`/cliente/nueva-reserva?${params.toString()}`);
+    navigate(`/nueva-reserva?${params.toString()}`);
   };
 
   const handleLogout = () => {
@@ -74,19 +77,13 @@ export default function ReservasPage() {
   const getSede = (sedeId: string) => sedes.find((s) => s.id === sedeId);
   const getTurno = (turnoId?: string) => turnoId ? turnos.find((t) => t.id === turnoId) : null;
   
-  const formatearFecha = (fecha: string) => {
-    const [year, month, day] = fecha.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    return `${dias[date.getDay()]}, ${date.getDate()} de ${meses[date.getMonth()]} de ${date.getFullYear()}`;
-  };
+  const formatearFecha = (fecha: string) => formatFechaLargaEs(fecha);
 
   const puedeCancelar = (reserva: Reserva): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
     
     // Verificar si la reserva es futura
-    const fechaReserva = new Date(reserva.fecha);
+    const fechaReserva = parseISODateLocal(reserva.fecha);
     const ahora = new Date();
     
     // Si tiene horario específico, verificar
@@ -172,7 +169,7 @@ export default function ReservasPage() {
             <p className="text-sm md:text-base text-gray-600">Gestiona tus reservas activas, finalizadas y canceladas</p>
           </div>
           <Button 
-            onClick={() => navigate('/cliente/nueva-reserva')}
+            onClick={() => navigate('/nueva-reserva')}
             className="bg-[#1E3A5F] hover:bg-[#2a5080] w-full sm:w-auto shrink-0"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -191,7 +188,7 @@ export default function ReservasPage() {
                 <h3 className="text-lg md:text-xl font-semibold mb-2 text-gray-800">No tienes reservas</h3>
                 <p className="text-sm md:text-base text-gray-500 mb-4 md:mb-6">Crea tu primera reserva para comenzar</p>
                 <Button 
-                  onClick={() => navigate('/cliente/nueva-reserva')} 
+                  onClick={() => navigate('/nueva-reserva')} 
                   className="bg-[#1E3A5F] hover:bg-[#2a5080] w-full sm:w-auto"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -361,3 +358,4 @@ export default function ReservasPage() {
     </div>
   );
 }
+

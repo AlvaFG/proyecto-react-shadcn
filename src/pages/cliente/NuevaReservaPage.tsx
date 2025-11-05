@@ -10,6 +10,7 @@ import { useAuthStore, useReservaStore } from '../../lib/store';
 import { sedes } from '../../lib/data/mockData';
 import { User, LogOut, ArrowLeft, Calendar as CalendarIcon, MapPin, Clock, Check, AlertCircle, BellOff } from 'lucide-react';
 import type { Sede, Reserva, Meal, TurnoHorario } from '../../types';
+import { COSTO_RESERVA } from '../../lib/config';
 import { buildSlotsForMeal, getMealLabel } from '../../lib/utils/slots';
 
 const steps = [
@@ -55,8 +56,6 @@ export default function NuevaReservaPage() {
   const handleConfirmar = () => {
     if (!user || !sedeSeleccionada || !fechaSeleccionada || !slotSeleccionado) return;
 
-    const costoReserva = 2000;
-    
     const nuevaReserva: Reserva = {
       id: `R${String(Date.now()).slice(-3)}`,
       usuarioId: user.id,
@@ -64,7 +63,7 @@ export default function NuevaReservaPage() {
       fecha: fechaSeleccionada,
       estado: 'ACTIVA',
       items: [],
-      total: costoReserva,
+      total: COSTO_RESERVA,
       fechaCreacion: new Date().toISOString(),
       meal: slotSeleccionado.meal,
       slotId: slotSeleccionado.id,
@@ -267,14 +266,22 @@ export default function NuevaReservaPage() {
                     const fechaString = dateToString(fechaObj);
                     const isSelected = fechaSeleccionada === fechaString;
                     const isPast = fechaObj < today;
+                    const dayOfWeek = fechaObj.getDay();
+                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                    const isDisabled = isPast || isWeekend;
+                    const secondaryLabel = isWeekend
+                      ? 'No disponible'
+                      : fechaObj.toLocaleDateString('es-ES', { month: 'short' });
                     
                     return (
                       <button
                         key={fechaString}
-                        onClick={() => !isPast && setFechaSeleccionada(fechaString)}
-                        disabled={isPast}
+                        onClick={() => !isDisabled && setFechaSeleccionada(fechaString)}
+                        disabled={isDisabled}
+                        aria-disabled={isDisabled}
+                        title={isWeekend ? 'No disponible en fin de semana' : undefined}
                         className={`aspect-square flex flex-col items-center justify-center rounded-lg text-center transition-all text-xs sm:text-sm ${
-                          isPast
+                          isDisabled
                             ? 'text-gray-400 opacity-60 cursor-not-allowed bg-gray-50'
                             : isSelected
                             ? 'bg-[#1E3A5F] text-white font-bold'
@@ -283,7 +290,7 @@ export default function NuevaReservaPage() {
                       >
                         <div className="text-base sm:text-lg font-semibold">{fechaObj.getDate()}</div>
                         <div className="text-[10px] sm:text-xs">
-                          {fechaObj.toLocaleDateString('es-ES', { month: 'short' })}
+                          {secondaryLabel}
                         </div>
                       </button>
                     );
@@ -431,7 +438,7 @@ export default function NuevaReservaPage() {
                   <div className="mt-4 md:mt-6 pt-4 border-t">
                     <div className="flex justify-between items-center mb-4 md:mb-6">
                       <span className="text-sm md:text-base font-semibold text-gray-800">Total costo reserva</span>
-                      <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">$ 2,000</span>
+                      <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">$ {COSTO_RESERVA.toFixed(0)}</span>
                     </div>
 
                     <div className="flex justify-end">
@@ -549,3 +556,4 @@ export default function NuevaReservaPage() {
     </div>
   );
 }
+

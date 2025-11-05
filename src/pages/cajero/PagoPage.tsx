@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { useAuthStore, useReservaStore } from '../../lib/store';
 import { reservasIniciales } from '../../lib/data/mockData';
+import { COSTO_RESERVA } from '../../lib/config';
 import { ArrowLeft, User, LogOut, Receipt, Banknote, CreditCard, Wallet, Plus } from 'lucide-react';
 import type { Reserva } from '../../types';
 
@@ -16,6 +18,7 @@ export default function PagoPage() {
   const reservaId = location.state?.reservaId;
   const [reserva, setReserva] = useState<Reserva | null>(null);
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
+  const [showConfirmPago, setShowConfirmPago] = useState(false);
 
   // ✅ useEffect corregido: ahora toma los items seleccionados desde el state al navegar
   useEffect(() => {
@@ -75,7 +78,7 @@ export default function PagoPage() {
     setReserva({ ...reserva, items: nuevoItems, total: nuevoTotal });
   };
 
-  const confirmarCompra = () => {
+  const finalizarCompra = () => {
     if (!reserva) return;
 
     actualizarReserva(reserva.id, {
@@ -92,6 +95,17 @@ export default function PagoPage() {
         total: reserva.total
       }
     });
+  };
+  
+  const confirmarCompra = () => {
+    if (!reserva) return;
+    // Para efectivo y transferencia pedimos confirmación del cajero
+    if (metodoPago === 'efectivo' || metodoPago === 'transferencia') {
+      setShowConfirmPago(true);
+      return;
+    }
+    // Saldo de cuenta ("tarjeta" en el modelo) no requiere confirmación FE
+    finalizarCompra();
   };
 
   if (!reserva) {
@@ -110,7 +124,7 @@ export default function PagoPage() {
     );
   }
 
-  const costoReserva = 2.5;
+  const costoReserva = COSTO_RESERVA;
   const subtotal = reserva.total;
   const totalAPagar = subtotal - costoReserva;
 
@@ -236,14 +250,14 @@ export default function PagoPage() {
             ))}
             <div className="flex justify-between text-sm border-t pt-3">
               <span className="text-gray-700">Devolución Costo Reserva</span>
-              <span className="font-semibold text-green-600">-$ {costoReserva.toFixed(3)}</span>
+              <span className="font-semibold text-green-600">-$ {costoReserva.toFixed(0)}</span>
             </div>
           </div>
 
           <div className="border-t-2 border-[#1E3A5F] pt-4">
             <div className="flex justify-between items-center">
               <span className="text-lg font-bold text-[#1E3A5F]">Total a pagar:</span>
-              <span className="text-2xl font-bold text-[#1E3A5F]">$ {totalAPagar.toFixed(3)}</span>
+              <span className="text-2xl font-bold text-[#1E3A5F]">$ {totalAPagar.toFixed(0)}</span>
             </div>
           </div>
         </Card>
@@ -308,6 +322,32 @@ export default function PagoPage() {
             Confirmar Compra
           </Button>
         </div>
+
+        {/* Confirmación de pago para Efectivo/Transferencia */}
+        <Dialog open={showConfirmPago} onOpenChange={setShowConfirmPago}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Confirmar registro de pago</DialogTitle>
+              <DialogDescription>
+                Confirma que el pago por {metodoPago === 'efectivo' ? 'Efectivo' : 'Transferencia'} fue recibido y registrado correctamente.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-2 p-3 bg-gray-50 rounded text-sm flex justify-between">
+              <span className="text-gray-700">Total a confirmar</span>
+              <span className="font-semibold text-gray-900">$ {totalAPagar.toFixed(0)}</span>
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setShowConfirmPago(false)}>
+                Cancelar
+              </Button>
+              <Button className="bg-[#1E3A5F] hover:bg-[#2a5080]" onClick={finalizarCompra}>
+                Confirmar pago
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

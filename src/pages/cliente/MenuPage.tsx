@@ -284,7 +284,7 @@ export default function MenuPage() {
             <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">¿Listo para hacer tu reserva?</h2>
             <p className="text-sm md:text-base text-gray-600 mb-4 md:mb-6">Selecciona tu sede, horario y menú favorito</p>
             <Button 
-              onClick={() => navigate('/cliente/nueva-reserva')}
+              onClick={() => navigate('/nueva-reserva')}
               className="bg-[#1E3A5F] hover:bg-[#2A4A7F] text-white px-6 md:px-8 py-5 md:py-6 text-base md:text-lg"
             >
               Hacer Reserva
@@ -296,7 +296,7 @@ export default function MenuPage() {
       {/* CTA Sticky Mobile */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t p-3 shadow-lg">
         <Button 
-          onClick={() => navigate('/cliente/nueva-reserva')}
+          onClick={() => navigate('/nueva-reserva')}
           className="w-full bg-[#1E3A5F] hover:bg-[#2A4A7F] text-white py-6 text-base font-semibold"
         >
           Hacer Reserva
@@ -305,3 +305,4 @@ export default function MenuPage() {
     </div>
   );
 }
+

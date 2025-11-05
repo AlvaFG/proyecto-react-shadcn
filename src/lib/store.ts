@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { User, Reserva, TurnoHorario, ReservaStatus } from '../types';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import type { User, Reserva, TurnoHorario, ReservaStatus, Consumible } from '../types';
+import { consumibles as consumiblesMock } from './data/mockData';
 
 interface AuthState {
   user: User | null;
@@ -44,6 +45,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      storage: createJSONStorage(() => localStorage),
     }
   )
 );
@@ -198,6 +200,7 @@ export const useReservaStore = create<ReservaState>()(
     }),
     {
       name: 'reserva-storage',
+      storage: createJSONStorage(() => localStorage),
       // Migración automática al cargar desde localStorage
       onRehydrateStorage: () => (state) => {
         if (state?.reservas) {
@@ -217,3 +220,207 @@ export const useReservaStore = create<ReservaState>()(
     }
   )
 );
+
+
+const cloneChefConsumibles = (): Consumible[] => consumiblesMock.map((item) => ({ ...item }));
+
+export const CHEF_TURNOS = ['desayuno', 'almuerzo', 'merienda', 'cena'] as const;
+export const CHEF_DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'] as const;
+export type ChefTurnoId = typeof CHEF_TURNOS[number];
+export type ChefDia = typeof CHEF_DIAS[number];
+
+export interface ChefMenuAsignado {
+  platoIds: string[];
+  bebidaIds: string[];
+  postreIds: string[];
+}
+
+export type ChefMenusSemana = Record<ChefTurnoId, Record<ChefDia, ChefMenuAsignado | null>>;
+
+const createEmptyChefMenus = (): ChefMenusSemana => ({
+  desayuno: { lunes: null, martes: null, miercoles: null, jueves: null, viernes: null },
+  almuerzo: { lunes: null, martes: null, miercoles: null, jueves: null, viernes: null },
+  merienda: { lunes: null, martes: null, miercoles: null, jueves: null, viernes: null },
+  cena: { lunes: null, martes: null, miercoles: null, jueves: null, viernes: null },
+});
+
+interface ChefConsumiblesState {
+  consumibles: Consumible[];
+  addConsumible: (consumible: Consumible) => void;
+  updateConsumible: (id: string, data: Partial<Consumible>) => void;
+  deleteConsumible: (id: string) => void;
+  toggleDisponibilidad: (id: string) => void;
+  resetConsumibles: () => void;
+}
+
+interface ChefMenuState {
+  menusSemana: ChefMenusSemana;
+  assignMenu: (turno: ChefTurnoId, dia: ChefDia, menu: ChefMenuAsignado) => void;
+  clearMenu: (turno: ChefTurnoId, dia: ChefDia) => void;
+  resetMenus: () => void;
+  removeConsumibleFromMenus: (consumibleId: string) => void;
+}
+
+export const useChefConsumiblesStore = create<ChefConsumiblesState>()(
+  persist(
+    (set) => ({
+      consumibles: cloneChefConsumibles(),
+      addConsumible: (consumible) =>
+        set((state) => ({ consumibles: [...state.consumibles, consumible] })),
+      updateConsumible: (id, data) =>
+        set((state) => ({
+          consumibles: state.consumibles.map((item) =>
+            item.id === id ? { ...item, ...data } : item
+          ),
+        })),
+      deleteConsumible: (id) =>
+        set((state) => ({
+          consumibles: state.consumibles.filter((item) => item.id !== id),
+        })),
+      toggleDisponibilidad: (id) =>
+        set((state) => ({
+          consumibles: state.consumibles.map((item) =>
+            item.id === id ? { ...item, disponible: !item.disponible } : item
+          ),
+        })),
+      resetConsumibles: () => set({ consumibles: cloneChefConsumibles() }),
+    }),
+    {
+      name: 'chef-consumibles-storage',
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+      migrate: (state, _version) => {
+        if (!state) {
+          return { consumibles: cloneChefConsumibles() };
+        }
+
+        // Asegura que siempre exista la lista de consumibles
+        if (!Array.isArray((state as ChefConsumiblesState).consumibles)) {
+          return { consumibles: cloneChefConsumibles() };
+        }
+
+        return state as ChefConsumiblesState;
+      },
+    }
+  )
+);
+
+const normalizeIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
+
+export const useChefMenuStore = create<ChefMenuState>()(
+  persist(
+    (set) => ({
+      menusSemana: createEmptyChefMenus(),
+      assignMenu: (turno, dia, menu) => {
+        const normalized: ChefMenuAsignado = {
+          platoIds: normalizeIds(menu.platoIds),
+          bebidaIds: normalizeIds(menu.bebidaIds),
+          postreIds: normalizeIds(menu.postreIds),
+        };
+        set((state) => ({
+          menusSemana: {
+            ...state.menusSemana,
+            [turno]: {
+              ...state.menusSemana[turno],
+              [dia]: normalized,
+            },
+          },
+        }));
+      },
+      clearMenu: (turno, dia) =>
+        set((state) => ({
+          menusSemana: {
+            ...state.menusSemana,
+            [turno]: {
+              ...state.menusSemana[turno],
+              [dia]: null,
+            },
+          },
+        })),
+      resetMenus: () => set({ menusSemana: createEmptyChefMenus() }),
+      removeConsumibleFromMenus: (consumibleId) => {
+        set((state) => {
+          let changed = false;
+          const updatedMenus: ChefMenusSemana = { ...state.menusSemana };
+
+          CHEF_TURNOS.forEach((turno) => {
+            const currentDias = state.menusSemana[turno];
+            let turnoChanged = false;
+            const newDias = { ...currentDias };
+
+            CHEF_DIAS.forEach((dia) => {
+              const menu = currentDias[dia];
+              if (menu) {
+                const nextMenu: ChefMenuAsignado = {
+                  platoIds: menu.platoIds.filter((id) => id !== consumibleId),
+                  bebidaIds: menu.bebidaIds.filter((id) => id !== consumibleId),
+                  postreIds: menu.postreIds.filter((id) => id !== consumibleId),
+                };
+
+                if (
+                  nextMenu.platoIds.length !== menu.platoIds.length ||
+                  nextMenu.bebidaIds.length !== menu.bebidaIds.length ||
+                  nextMenu.postreIds.length !== menu.postreIds.length
+                ) {
+                  turnoChanged = true;
+                  changed = true;
+                  if (
+                    nextMenu.platoIds.length === 0 &&
+                    nextMenu.bebidaIds.length === 0 &&
+                    nextMenu.postreIds.length === 0
+                  ) {
+                    newDias[dia] = null;
+                  } else {
+                    newDias[dia] = nextMenu;
+                  }
+                }
+              }
+            });
+
+            if (turnoChanged) {
+              updatedMenus[turno] = newDias;
+            }
+          });
+
+          return changed ? { menusSemana: updatedMenus } : state;
+        });
+      },
+    }),
+    {
+      name: 'chef-menu-storage',
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+      migrate: (state) => {
+        if (!state) {
+          return { menusSemana: createEmptyChefMenus() };
+        }
+
+        const typedState = state as Partial<ChefMenuState>;
+        if (!typedState.menusSemana) {
+          return { menusSemana: createEmptyChefMenus() };
+        }
+
+        // Limpia claves inválidas que puedan venir de versiones anteriores
+        const sanitized: ChefMenusSemana = createEmptyChefMenus();
+        CHEF_TURNOS.forEach((turno) => {
+          CHEF_DIAS.forEach((dia) => {
+            const menu = typedState.menusSemana?.[turno]?.[dia] ?? null;
+
+            if (menu && typeof menu === 'object') {
+              sanitized[turno][dia] = {
+                platoIds: normalizeIds((menu as ChefMenuAsignado).platoIds ?? []),
+                bebidaIds: normalizeIds((menu as ChefMenuAsignado).bebidaIds ?? []),
+                postreIds: normalizeIds((menu as ChefMenuAsignado).postreIds ?? []),
+              };
+            } else {
+              sanitized[turno][dia] = null;
+            }
+          });
+        });
+
+        return { menusSemana: sanitized };
+      },
+    }
+  )
+);
+

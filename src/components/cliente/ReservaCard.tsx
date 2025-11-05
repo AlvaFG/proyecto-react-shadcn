@@ -4,6 +4,7 @@ import { Badge } from '../../components/ui/badge';
 import { Calendar, Clock, MapPin, DollarSign } from 'lucide-react';
 import type { Reserva } from '../../types';
 import { sedes, turnos } from '../../lib/data/';
+import { formatFechaLargaEs } from '../../lib/date';
 
 interface ReservaCardProps {
   reserva: Reserva;
@@ -39,14 +40,7 @@ export default function ReservaCard({ reserva, onVerDetalles, onCancelar }: Rese
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Calendar className="w-4 h-4" />
-          <span>
-            {new Date(reserva.fecha).toLocaleDateString('es-ES', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </span>
+          <span>{formatFechaLargaEs(reserva.fecha)}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Clock className="w-4 h-4" />
