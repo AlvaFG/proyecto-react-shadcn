@@ -1,26 +1,137 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Badge } from '../../components/ui/badge';
-import { useAuthStore, useReservaStore } from '../../lib/store';
+import { useAuthStore } from '../../lib/store';
 import { MapPin, Clock, AlertTriangle, Plus, ArrowLeft, User, LogOut } from 'lucide-react';
-import { sedes, turnos } from '../../lib/data/mockData';
 import { parseISODateLocal, formatFechaLargaEs } from '../../lib/date';
-import type { Reserva, ReservaStatus } from '../../types';
+import type { ReservaStatus } from '../../types';
 import { RESERVA_STATUS_LABEL, RESERVA_STATUS_CLASS } from '../../types';
+import { api } from '@/lib/http';
+
+// Tipos para mapear la respuesta del API
+interface ReservaAPI {
+  id: number;
+  userId: number;
+  locationId: number;
+  locationName?: string;
+  locationAddress?: string;
+  mealTime: string;
+  reservationDate: string;
+  reservationTimeSlot: string;
+  status: string;
+  cost: number;
+  createdAt: string;
+}
+
+// Tipo para representar una reserva en el frontend
+interface ReservaFE {
+  id: string;
+  usuarioId: string;
+  sedeId: string;
+  sedeNombre?: string;
+  sedeDireccion?: string;
+  fecha: string;
+  estado: ReservaStatus;
+  meal: string;
+  slotStart?: string;
+  slotEnd?: string;
+  total: number;
+  fechaCreacion: string;
+}
+
+// Mapear horarios de slot a rangos horarios
+const getSlotTimeRange = (slotName: string): { start: string; end: string } => {
+  const slotMap: Record<string, { start: string; end: string }> = {
+    'DESAYUNO_SLOT_1': { start: '07:00', end: '08:00' },
+    'DESAYUNO_SLOT_2': { start: '08:00', end: '09:00' },
+    'DESAYUNO_SLOT_3': { start: '09:00', end: '10:00' },
+    'DESAYUNO_SLOT_4': { start: '10:00', end: '11:00' },
+    'ALMUERZO_SLOT_1': { start: '12:00', end: '13:00' },
+    'ALMUERZO_SLOT_2': { start: '13:00', end: '14:00' },
+    'ALMUERZO_SLOT_3': { start: '14:00', end: '15:00' },
+    'MERIENDA_SLOT_1': { start: '16:00', end: '17:00' },
+    'MERIENDA_SLOT_2': { start: '17:00', end: '18:00' },
+    'MERIENDA_SLOT_3': { start: '18:00', end: '19:00' },
+    'CENA_SLOT_1': { start: '20:00', end: '21:00' },
+    'CENA_SLOT_2': { start: '21:00', end: '22:00' },
+  };
+  
+  return slotMap[slotName] || { start: '00:00', end: '00:00' };
+};
+
+// Función para normalizar el estado del backend al frontend
+const normalizeStatus = (status: string): ReservaStatus => {
+  const normalized = status.toUpperCase();
+  if (normalized === 'ACTIVA' || normalized === 'ACTIVE') return 'ACTIVA';
+  if (normalized === 'FINALIZADA' || normalized === 'COMPLETED') return 'FINALIZADA';
+  if (normalized === 'CANCELADA' || normalized === 'CANCELLED' || normalized === 'CANCELED') return 'CANCELADA';
+  return 'ACTIVA'; // Default
+};
 
 export default function ReservasPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const reservas = useReservaStore((state) => state.reservas);
-  const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
   
-  const [reservaSeleccionada, setReservaSeleccionada] = useState<Reserva | null>(null);
+  const [reservas, setReservas] = useState<ReservaFE[]>([]);
+  const [loadingReservas, setLoadingReservas] = useState(true);
+  const [reservaSeleccionada, setReservaSeleccionada] = useState<ReservaFE | null>(null);
   const [showCancelarDialog, setShowCancelarDialog] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
 
-  // Nota: usamos helpers compartidos en lib/date para evitar desfases por UTC.
+  // Cargar reservas desde el API
+  useEffect(() => {
+    const fetchReservas = async () => {
+      if (!user) return;
+      
+      try {
+        setLoadingReservas(true);
+        
+        // Cargar reservas y sedes en paralelo
+        const [reservasData, sedesData] = await Promise.all([
+          api.get<ReservaAPI[]>('/reservations'),
+          api.get<{ id: number; name: string; address: string }[]>('/locations')
+        ]);
+        
+        // Crear mapa de sedes para búsqueda rápida
+        const sedesMap = new Map(
+          (sedesData || []).map(sede => [sede.id, { nombre: sede.name, direccion: sede.address }])
+        );
+        
+        // Mapear las reservas del API al formato del frontend
+        const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
+          const timeRange = getSlotTimeRange(r.reservationTimeSlot);
+          const sedeInfo = sedesMap.get(r.locationId);
+          
+          return {
+            id: String(r.id),
+            usuarioId: String(r.userId),
+            sedeId: String(r.locationId),
+            sedeNombre: r.locationName || sedeInfo?.nombre || 'Sede no especificada',
+            sedeDireccion: r.locationAddress || sedeInfo?.direccion,
+            fecha: r.reservationDate.split('T')[0], // Extraer solo la fecha (YYYY-MM-DD)
+            estado: normalizeStatus(r.status),
+            meal: r.mealTime,
+            slotStart: timeRange.start,
+            slotEnd: timeRange.end,
+            total: r.cost,
+            fechaCreacion: r.createdAt,
+          };
+        });
+        
+        setReservas(reservasMapeadas);
+      } catch (error) {
+        console.error('Error al cargar reservas:', error);
+        setReservas([]);
+      } finally {
+        setLoadingReservas(false);
+      }
+    };
+
+    fetchReservas();
+  }, [user]);
 
   // Filtrar y ordenar: ACTIVAS primero, luego FINALIZADAS, luego CANCELADAS
   const misReservas = reservas
@@ -43,16 +154,35 @@ export default function ReservasPage() {
       return parseISODateLocal(b.fecha).getTime() - parseISODateLocal(a.fecha).getTime();
     });
 
-  const handleCancelar = (reserva: Reserva) => {
+  const handleCancelar = (reserva: ReservaFE) => {
     setReservaSeleccionada(reserva);
     setShowCancelarDialog(true);
   };
 
-  const confirmarCancelacion = () => {
-    if (reservaSeleccionada) {
-      actualizarReserva(reservaSeleccionada.id, { estado: 'CANCELADA' });
+  const confirmarCancelacion = async () => {
+    if (!reservaSeleccionada) return;
+    
+    try {
+      setCancelando(true);
+      
+      // Llamar al endpoint DELETE del backend
+      await api.delete(`/reservations/${reservaSeleccionada.id}`);
+      
+      // Actualizar el estado local para reflejar la cancelación
+      setReservas(prevReservas =>
+        prevReservas.map(r =>
+          r.id === reservaSeleccionada.id ? { ...r, estado: 'CANCELADA' as ReservaStatus } : r
+        )
+      );
+      
       setShowCancelarDialog(false);
       setReservaSeleccionada(null);
+    } catch (error) {
+      console.error('Error al cancelar reserva:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo cancelar la reserva: ${errorMessage}\n\nPor favor intente nuevamente.`);
+    } finally {
+      setCancelando(false);
     }
   };
 
@@ -61,12 +191,9 @@ export default function ReservasPage() {
     navigate('/login');
   };
 
-  const getSede = (sedeId: string) => sedes.find((s) => s.id === sedeId);
-  const getTurno = (turnoId?: string) => turnoId ? turnos.find((t) => t.id === turnoId) : null;
-  
   const formatearFecha = (fecha: string) => formatFechaLargaEs(fecha);
 
-  const puedeCancelar = (reserva: Reserva): boolean => {
+  const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
     
     // Verificar si la reserva es futura
@@ -165,7 +292,19 @@ export default function ReservasPage() {
         </div>
 
         {/* Reservas Grid */}
-        {misReservas.length === 0 ? (
+        {loadingReservas ? (
+          <Card className="bg-white border-0 shadow-md">
+            <CardContent className="p-6 sm:p-8 md:p-12 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                  <Clock className="w-8 h-8 md:w-10 md:h-10 text-gray-400" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold mb-2 text-gray-800">Cargando reservas...</h3>
+                <p className="text-sm md:text-base text-gray-500">Por favor espera un momento</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : misReservas.length === 0 ? (
           <Card className="bg-white border-0 shadow-md">
             <CardContent className="p-6 sm:p-8 md:p-12 text-center">
               <div className="flex flex-col items-center justify-center">
@@ -187,8 +326,6 @@ export default function ReservasPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {misReservas.map((reserva) => {
-              const sede = getSede(reserva.sedeId);
-              const turno = getTurno(reserva.turnoId);
               const mostrarBotonCancelar = puedeCancelar(reserva);
               
               return (
@@ -211,8 +348,10 @@ export default function ReservasPage() {
                         <MapPin className="w-4 h-4 text-[#1E3A5F] mt-0.5 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Sede</p>
-                          <p className="text-sm text-gray-700 truncate">{sede?.nombre}</p>
-                          <p className="text-xs text-gray-500 truncate">{sede?.direccion}</p>
+                          <p className="text-sm text-gray-700 truncate">{reserva.sedeNombre || 'Sede no especificada'}</p>
+                          {reserva.sedeDireccion && (
+                            <p className="text-xs text-gray-500 truncate">{reserva.sedeDireccion}</p>
+                          )}
                         </div>
                       </div>
 
@@ -224,11 +363,6 @@ export default function ReservasPage() {
                             <>
                               <p className="text-sm text-gray-700">{reserva.meal}</p>
                               <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
-                            </>
-                          ) : turno ? (
-                            <>
-                              <p className="text-sm text-gray-700">{turno.nombre}</p>
-                              <p className="text-xs text-gray-500">{turno.horaInicio} - {turno.horaFin}</p>
                             </>
                           ) : (
                             <p className="text-sm text-gray-500">Horario no especificado</p>
@@ -255,9 +389,13 @@ export default function ReservasPage() {
                           variant="destructive"
                           className="w-full bg-red-500 hover:bg-red-600 text-xs md:text-sm"
                           onClick={() => handleCancelar(reserva)}
+                          disabled={cancelando && reservaSeleccionada?.id === reserva.id}
                           aria-label={`Cancelar reserva ${reserva.id}`}
                         >
-                          Cancelar Reserva
+                          {cancelando && reservaSeleccionada?.id === reserva.id 
+                            ? 'Cancelando...' 
+                            : 'Cancelar Reserva'
+                          }
                         </Button>
                       </div>
                     )}
@@ -316,18 +454,27 @@ export default function ReservasPage() {
       </main>
 
       {/* Dialog de Cancelación */}
-      <Dialog open={showCancelarDialog} onOpenChange={setShowCancelarDialog}>
+      <Dialog open={showCancelarDialog} onOpenChange={(open) => {
+        // Prevenir cierre del diálogo mientras se está cancelando
+        if (!cancelando) {
+          setShowCancelarDialog(open);
+        }
+      }}>
         <DialogContent className="sm:max-w-md mx-4">
           <DialogHeader>
             <DialogTitle className="text-lg md:text-xl">Cancelar Reserva</DialogTitle>
             <DialogDescription className="text-sm md:text-base">
-              ¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.
+              {cancelando 
+                ? 'Procesando cancelación...' 
+                : '¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.'
+              }
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col sm:flex-row gap-3 justify-end mt-4">
             <Button 
               variant="outline" 
               onClick={() => setShowCancelarDialog(false)}
+              disabled={cancelando}
               className="w-full sm:w-auto"
             >
               No, mantener
@@ -335,9 +482,10 @@ export default function ReservasPage() {
             <Button 
               variant="destructive" 
               onClick={confirmarCancelacion}
+              disabled={cancelando}
               className="w-full sm:w-auto bg-red-500 hover:bg-red-600"
             >
-              Sí, cancelar reserva
+              {cancelando ? 'Cancelando...' : 'Sí, cancelar reserva'}
             </Button>
           </div>
         </DialogContent>
