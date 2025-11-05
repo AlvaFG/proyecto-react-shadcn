@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import Stepper from '../../components/cliente/Stepper';
 import SlotCard from '../../components/cliente/SlotCard';
 import { useAuthStore, useReservaStore } from '../../lib/store';
-import { sedes } from '../../lib/data/mockData';
+
+import { api } from '@/lib/http';
 import { User, LogOut, ArrowLeft, Calendar as CalendarIcon, MapPin, Clock, Check, AlertCircle, BellOff } from 'lucide-react';
 import type { Sede, Reserva, Meal, TurnoHorario } from '../../types';
 import { COSTO_RESERVA } from '../../lib/config';
@@ -27,7 +28,13 @@ export default function NuevaReservaPage() {
   const { user, logout } = useAuthStore();
   const { agregarReserva, getSlotCount } = useReservaStore();
 
+
+
+
   const [currentStep, setCurrentStep] = useState(1);
+
+  
+  const [sedes, setSedes] = useState<Sede[]>([]);
   const [sedeSeleccionada, setSedeSeleccionada] = useState<Sede | null>(null);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>('');
   const [mealSeleccionado, setMealSeleccionado] = useState<Meal | null>(null);
@@ -35,6 +42,27 @@ export default function NuevaReservaPage() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, _setErrorMessage] = useState('');
+
+  
+
+  useEffect(() => {
+    (async () => {
+      try {
+        type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
+        const data = await api.get<LocationApi[]>('/locations');
+        const mapped: Sede[] = (data || []).map(l => ({
+          id: String(l.id),
+          nombre: l.name,
+          direccion: l.address,
+          capacidad: l.capacity,
+          imagen: (l as any).imageUrl,
+        }));
+        setSedes(mapped);
+      } catch (_) {
+        setSedes([]);
+      }
+    })();
+  }, []);
 
   const handleLogout = () => {
     logout();
