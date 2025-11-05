@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -11,10 +11,12 @@ import type { Sede } from '@/types';
 export default function ClienteDashboardPage() {
   const navigate = useNavigate();
   const [sedes, setSedes] = useState<Sede[]>([]);
+  const [loadingSedes, setLoadingSedes] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setLoadingSedes(true);
       try {
         setError(null);
         type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
@@ -29,10 +31,11 @@ export default function ClienteDashboardPage() {
         setSedes(mapped);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'No se pudieron cargar las sedes');
+      } finally {
+        setLoadingSedes(false);
       }
     })();
   }, []);
-
   return (
     <div className="bg-[#E8DED4] min-h-[calc(100vh-4rem)]">
       <main className="container mx-auto px-4 py-12">
@@ -115,7 +118,9 @@ export default function ClienteDashboardPage() {
               <CardTitle className="text-[#1E3A5F]">Información de Sedes</CardTitle>
             </CardHeader>
             <CardContent>
-              {error ? (
+              {loadingSedes ? (
+                <div className="text-sm text-gray-600 animate-pulse">Cargando sedes...</div>
+              ) : error ? (
                 <div className="text-sm text-red-600">{error}</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

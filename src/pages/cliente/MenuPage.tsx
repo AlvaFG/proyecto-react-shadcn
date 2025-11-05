@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Card, CardContent } from '../../components/ui/card';
@@ -17,9 +17,11 @@ export default function MenuPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [sedesState, setSedesState] = useState<Sede[]>([]);
+  const [loadingSedes, setLoadingSedes] = useState(true);
 
   useEffect(() => {
     (async () => {
+      setLoadingSedes(true);
       try {
         type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
         const data = await api.get<LocationApi[]>('/locations');
@@ -31,7 +33,9 @@ export default function MenuPage() {
           imagen: l.imageUrl,
         }));
         setSedesState(mapped);
+        setLoadingSedes(false);
       } catch (_) {
+        setLoadingSedes(false);
         // si falla, sedesState queda vacío y se usa el mock
       }
     })();
@@ -142,13 +146,17 @@ export default function MenuPage() {
           <CardContent className="p-4 md:p-6">
             <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-3 md:mb-4 text-left">Comedores Disponibles</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-              {sedesList.map((sede) => (
-                <div key={sede.id} className="border rounded-lg p-3 md:p-4 hover:shadow-md transition-shadow text-left">
-                  <h4 className="font-semibold text-sm md:text-base text-gray-800">{sede.nombre}</h4>
-                  <p className="text-xs md:text-sm text-gray-600 mt-1">{sede.direccion}</p>
-                  <p className="text-xs md:text-sm text-gray-600">Capacidad: {sede.capacidad} personas</p>
-                </div>
-              ))}
+              {loadingSedes ? (
+                <div className="text-sm text-gray-600 animate-pulse">Cargando sedes...</div>
+              ) : (
+                sedesList.map((sede) => (
+                  <div key={sede.id} className="border rounded-lg p-3 md:p-4 hover:shadow-md transition-shadow text-left">
+                    <h4 className="font-semibold text-sm md:text-base text-gray-800">{sede.nombre}</h4>
+                    <p className="text-xs md:text-sm text-gray-600 mt-1">{sede.direccion}</p>
+                    <p className="text-xs md:text-sm text-gray-600">Capacidad: {sede.capacidad} personas</p>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>

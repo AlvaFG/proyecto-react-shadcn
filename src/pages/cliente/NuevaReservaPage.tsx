@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -22,6 +22,12 @@ const steps = [
 ];
 
 const MEALS: Meal[] = ['Desayuno', 'Almuerzo', 'Merienda', 'Cena'];
+
+export default function NuevaReservaPage() {
+  const navigate = useNavigate();
+  const { user, logout } = useAuthStore();
+  const { agregarReserva, getSlotCount } = useReservaStore();
+
 
 
 
@@ -57,6 +63,11 @@ const MEALS: Meal[] = ['Desayuno', 'Almuerzo', 'Merienda', 'Cena'];
       }
     })();
   }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const handleNext = () => {
     if (currentStep < 4) {
