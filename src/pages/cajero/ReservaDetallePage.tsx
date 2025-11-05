@@ -194,12 +194,12 @@ useEffect(() => {
               <div>
                 <p className="text-sm text-gray-600">Estado de Reserva</p>
                 <Badge className={
-                  reserva.estado === 'pagada' ? 'bg-green-100 text-green-800' :
-                  reserva.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
+                  reserva.estado === 'FINALIZADA' ? 'bg-green-100 text-green-800' :
+                  reserva.estado === 'ACTIVA' ? 'bg-blue-100 text-blue-800' :
                   'bg-yellow-100 text-yellow-800'
                 }>
-                  {reserva.estado === 'pagada' ? 'Activa' :
-                   reserva.estado === 'confirmada' ? 'Confirmada' : 'Pendiente'}
+                  {reserva.estado === 'FINALIZADA' ? 'Finalizada' :
+                   reserva.estado === 'ACTIVA' ? 'Activa' : 'Cancelada'}
                 </Badge>
               </div>
             </div>

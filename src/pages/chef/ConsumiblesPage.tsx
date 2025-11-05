@@ -99,7 +99,7 @@ export default function ConsumiblesPage() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setFormData((prev) => ({ ...prev, imagen: reader.result }));
+        setFormData((prev) => ({ ...prev, imagen: reader.result as string }));
       }
     };
     reader.readAsDataURL(file);
