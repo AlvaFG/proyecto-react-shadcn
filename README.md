@@ -106,3 +106,25 @@ import { cn } from "@/lib/utils"
 ##  Licencia
 
 MIT
+##  Configuración de Backend
+
+- Variables de entorno (Vite):
+  - `VITE_API_BASE_URL` apunta al backend (sin slash final).
+  - Usa `.env.development` para local y `.env.production` para nube.
+- Proxy de desarrollo:
+  - En `vite.config.ts` se proxya `/api` hacia `VITE_API_BASE_URL` en dev.
+- Cliente HTTP central:
+  - `src/lib/env.ts` expone `API_BASE_URL`.
+  - `src/lib/http.ts` expone `api.get/post/put/patch/delete(path, opts)`.
+
+Ejemplo de uso:
+
+```ts
+import { api } from '@/lib/http'
+
+// GET /api/turnos
+const turnos = await api.get('/api/turnos')
+
+// POST /api/reservas
+const nueva = await api.post('/api/reservas', { clienteId, turnoId })
+```
