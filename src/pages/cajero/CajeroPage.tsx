@@ -6,16 +6,34 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { FileText, User, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
+import { getReservaById } from '../../services/reservaService'; // 👈 nuevo import
 
 export default function CajeroPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const [reservaId, setReservaId] = useState('');
 
-  const handleBuscar = (e: React.FormEvent) => {
+  const [reservaId, setReservaId] = useState('');
+  const [loading, setLoading] = useState(false); // 👈 estado para el spinner o loading
+
+  // 👉 función que consulta el backend
+  const handleBuscar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (reservaId.trim()) {
-      navigate(`/cajero/reserva/${reservaId.trim()}`);
+
+    if (!reservaId.trim()) return;
+    setLoading(true);
+
+    try {
+      // Llamada al endpoint del backend
+      const reserva = await getReservaById(reservaId.trim());
+      console.log('Reserva encontrada:', reserva);
+
+      // Navega a la pantalla de detalle y pasa los datos
+      navigate(`/cajero/reserva/${reservaId.trim()}`, { state: { reserva } });
+    } catch (error) {
+      alert('No se encontró la reserva o hubo un error al consultar el servidor.');
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -39,7 +57,7 @@ export default function CajeroPage() {
                 <User className="w-4 h-4" />
                 <span className="text-sm font-medium">{user?.nombre || 'Cajero Demo'}</span>
               </div>
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handleLogout}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
@@ -81,19 +99,19 @@ export default function CajeroPage() {
                   <Input
                     id="reservaId"
                     type="text"
-                    placeholder="Ej: R001, R002..."
+                    placeholder="Ej: 1, 2..."
                     value={reservaId}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservaId(e.target.value)}
                     className="h-12 text-base border-gray-300 focus:border-[#1E3A5F] focus:ring-[#1E3A5F]"
                   />
                 </div>
 
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full h-12 text-base bg-[#1E3A5F] hover:bg-[#2a5080] text-white"
-                  disabled={!reservaId.trim()}
+                  disabled={!reservaId.trim() || loading}
                 >
-                  Buscar
+                  {loading ? 'Buscando...' : 'Buscar'}
                 </Button>
               </form>
             </Card>
@@ -119,7 +137,7 @@ export default function CajeroPage() {
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-[#1E3A5F] font-bold">•</span>
-                  <p>Verifica los datos Necesarios</p>
+                  <p>Verifica los datos necesarios</p>
                 </div>
               </div>
             </Card>

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { useAuthStore, useReservaStore } from '../../lib/store';
-import { reservasIniciales, sedes, consumibles, usuarios } from '../../lib/data/mockData';
+import { sedes, consumibles, usuarios } from '../../lib/data/mockData';
 import { ArrowLeft, User, LogOut, Calendar, Utensils, Wine, Cake, ShoppingCart } from 'lucide-react';
 import type { Reserva, Consumible } from '../../types';
 
@@ -16,22 +16,13 @@ interface CartItem {
 export default function ReservaDetallePage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const { user: cajeroUser, logout } = useAuthStore();
   const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
 
-  const [reserva, setReserva] = useState<Reserva | null>(null);
+  // ✅ Recibe la reserva desde CajeroPage (cuando se hace navigate con state)
+  const reserva = location.state?.reserva as Reserva | null;
   const [carrito, setCarrito] = useState<CartItem[]>([]);
-
-useEffect(() => {
-  const reservaEncontrada =
-    useReservaStore.getState().obtenerReservaPorId(id || '') ||
-    reservasIniciales.find((r) => r.id === id);
-
-  if (reservaEncontrada) {
-    setReserva(reservaEncontrada);
-    setCarrito([]); // 👈 el cajero empieza con el carrito vacío
-  }
-}, [id]);
 
   const handleLogout = () => {
     logout();
@@ -69,29 +60,26 @@ useEffect(() => {
     return item ? item.cantidad : 0;
   };
 
- const confirmarCarrito = () => {
-   if (!reserva) return;
+  const confirmarCarrito = () => {
+    if (!reserva) return;
 
-   const total = carrito.reduce((sum, item) => sum + (item.consumible.precio * item.cantidad), 0);
+    const total = carrito.reduce((sum, item) => sum + (item.consumible.precio * item.cantidad), 0);
+    const items = carrito.map(item => ({
+      consumibleId: item.consumible.id,
+      consumible: item.consumible,
+      cantidad: item.cantidad
+    }));
 
-   const items = carrito.map(item => ({
-     consumibleId: item.consumible.id,
-     consumible: item.consumible,
-     cantidad: item.cantidad
-   }));
+    actualizarReserva(reserva.id, { items, total });
 
-   // ✅ Actualizamos en el store
-   actualizarReserva(reserva.id, { items, total });
-
-   // ✅ Pasamos también los ítems por "state" al navegar
-   navigate('/cajero/pago', {
-     state: {
-       reservaId: reserva.id,
-       items,
-       total
-     }
-   });
- };
+    navigate('/cajero/pago', {
+      state: {
+        reservaId: reserva.id,
+        items,
+        total
+      }
+    });
+  };
 
   if (!reserva) {
     return (
@@ -99,7 +87,7 @@ useEffect(() => {
         <Card className="max-w-md p-8">
           <h2 className="text-2xl font-bold text-[#1E3A5F] mb-4">Reserva no encontrada</h2>
           <p className="text-gray-600 mb-6">
-            No se encontró una reserva con el ID: {id}
+            No se encontraron datos para la reserva con ID: {id}
           </p>
           <Button
             onClick={() => navigate('/cajero')}
@@ -112,8 +100,9 @@ useEffect(() => {
     );
   }
 
-  const cliente = usuarios.find(u => u.id === reserva.usuarioId);
-  const sede = sedes.find((s) => s.id === reserva.sedeId);
+  // 🔹 Información de reserva y datos relacionados
+  const cliente = usuarios.find(u => u.id === reserva.userId);
+  const sede = sedes.find((s) => s.id === reserva.locationId);
 
   const platos = consumibles.filter(c => c.tipo === 'plato');
   const bebidas = consumibles.filter(c => c.tipo === 'bebida');
@@ -194,12 +183,12 @@ useEffect(() => {
               <div>
                 <p className="text-sm text-gray-600">Estado de Reserva</p>
                 <Badge className={
-                  reserva.estado === 'pagada' ? 'bg-green-100 text-green-800' :
-                  reserva.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
+                  reserva.status === 'pagada' ? 'bg-green-100 text-green-800' :
+                  reserva.status === 'confirmada' ? 'bg-blue-100 text-blue-800' :
                   'bg-yellow-100 text-yellow-800'
                 }>
-                  {reserva.estado === 'pagada' ? 'Activa' :
-                   reserva.estado === 'confirmada' ? 'Confirmada' : 'Pendiente'}
+                  {reserva.status === 'pagada' ? 'Activa' :
+                   reserva.status === 'confirmada' ? 'Confirmada' : 'Pendiente'}
                 </Badge>
               </div>
             </div>
@@ -214,25 +203,25 @@ useEffect(() => {
             <div className="space-y-3">
               <div>
                 <p className="text-sm text-gray-600">Fecha</p>
-                <p className="font-semibold text-gray-900">
-                  Sábado, 14 de diciembre de 2024
-                </p>
+                <p className="font-semibold text-gray-900">{reserva.reservationDate}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Turno</p>
-                <p className="font-semibold text-gray-900">
-                  Almuerzo (12:00 - 15:00)
-                </p>
+                <p className="font-semibold text-gray-900">{reserva.mealTime}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Costo</p>
+                <p className="font-semibold text-gray-900">${reserva.cost}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Sede</p>
                 <p className="font-semibold text-gray-900">{sede?.nombre || 'Sede Centro'}</p>
-                <p className="text-sm text-gray-600">{sede?.direccion || 'Calle Principal 123'}</p>
               </div>
             </div>
           </Card>
         </div>
 
+        {/* 🔽 desde acá se mantienen tus secciones originales */}
         {/* Sección de Platos */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
