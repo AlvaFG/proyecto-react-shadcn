@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -9,27 +9,103 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Edit, Trash2, User, LogOut, Utensils, Wine, Cake, Home, Search } from 'lucide-react';
-import { useAuthStore, useChefConsumiblesStore, useChefMenuStore } from '../../lib/store';
-import type { Consumible } from '../../types';
+import { useAuthStore, useChefMenuStore } from '../../lib/store';
+import { api } from '@/lib/http';
+
+// Tipos para mapear la respuesta del API
+interface ProductAPI {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  productType: string; // "PLATO", "BEBIDA", "POSTRE"
+  active: boolean;
+  imageUrl?: string;
+}
+
+// Tipo para representar un consumible en el frontend
+interface ConsumibleFE {
+  id: string;
+  nombre: string;
+  tipo: 'plato' | 'bebida' | 'postre';
+  descripcion: string;
+  precio: number;
+  disponible: boolean;
+  imagen?: string;
+}
+
+// Función para normalizar el tipo de producto del backend al frontend
+const normalizeProductType = (type: string): 'plato' | 'bebida' | 'postre' => {
+  const normalized = type.toUpperCase();
+  if (normalized === 'PLATO' || normalized === 'MAIN' || normalized === 'FOOD') return 'plato';
+  if (normalized === 'BEBIDA' || normalized === 'DRINK' || normalized === 'BEVERAGE') return 'bebida';
+  if (normalized === 'POSTRE' || normalized === 'DESSERT') return 'postre';
+  return 'plato'; // Default
+};
+
+// Función para convertir tipo frontend a backend
+const toBackendProductType = (tipo: 'plato' | 'bebida' | 'postre'): string => {
+  switch (tipo) {
+    case 'plato': return 'PLATO';
+    case 'bebida': return 'BEBIDA';
+    case 'postre': return 'POSTRE';
+    default: return 'PLATO';
+  }
+};
 
 export default function ConsumiblesPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { consumibles, addConsumible, updateConsumible, deleteConsumible } = useChefConsumiblesStore();
   const removeConsumibleFromMenus = useChefMenuStore((state) => state.removeConsumibleFromMenus);
+  
+  // Estados para consumibles del API
+  const [consumibles, setConsumibles] = useState<ConsumibleFE[]>([]);
+  const [loadingConsumibles, setLoadingConsumibles] = useState(true);
+  
   const [showDialog, setShowDialog] = useState(false);
-  const [editingConsumible, setEditingConsumible] = useState<Consumible | null>(null);
-  const [formData, setFormData] = useState<Partial<Consumible>>({
+  const [editingConsumible, setEditingConsumible] = useState<ConsumibleFE | null>(null);
+  const [formData, setFormData] = useState<Partial<ConsumibleFE>>({
     nombre: '',
     tipo: 'plato',
     descripcion: '',
     precio: 0,
     disponible: true,
-    categoria: '',
     imagen: '',
   });
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Cargar consumibles desde el API
+  const fetchConsumibles = async () => {
+    try {
+      setLoadingConsumibles(true);
+      const data = await api.get<ProductAPI[]>('/products');
+      
+      // Mapear los productos del API al formato del frontend
+      const consumiblesMapeados: ConsumibleFE[] = (data || []).map((p) => ({
+        id: String(p.id),
+        nombre: p.name,
+        tipo: normalizeProductType(p.productType),
+        descripcion: p.description,
+        precio: p.price,
+        disponible: p.active,
+        imagen: p.imageUrl,
+      }));
+      
+      setConsumibles(consumiblesMapeados);
+    } catch (error) {
+      console.error('Error al cargar consumibles:', error);
+      setConsumibles([]);
+    } finally {
+      setLoadingConsumibles(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchConsumibles();
+  }, []);
 
   const normalize = (s: string) =>
     (s || '')
@@ -57,23 +133,36 @@ export default function ConsumiblesPage() {
       descripcion: '',
       precio: 0,
       disponible: true,
-      categoria: '',
       imagen: '',
     });
     setShowDialog(true);
   };
 
-  const handleEdit = (consumible: Consumible) => {
+  const handleEdit = (consumible: ConsumibleFE) => {
     setEditingConsumible(consumible);
     setSelectedImageFile(null);
     setFormData(consumible);
     setShowDialog(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este consumible?')) {
-      deleteConsumible(id);
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este consumible?')) return;
+    
+    try {
+      setDeleting(id);
+      
+      // Llamar al endpoint DELETE del backend
+      await api.delete(`/products/${id}`);
+      
+      // Actualizar estado local tras confirmación exitosa
+      setConsumibles(prev => prev.filter(c => c.id !== id));
       removeConsumibleFromMenus(id);
+    } catch (error) {
+      console.error('Error al eliminar consumible:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo eliminar el consumible: ${errorMessage}`);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -99,7 +188,7 @@ export default function ConsumiblesPage() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setFormData((prev) => ({ ...prev, imagen: reader.result }));
+        setFormData((prev) => ({ ...prev, imagen: reader.result as string }));
       }
     };
     reader.readAsDataURL(file);
@@ -112,7 +201,7 @@ export default function ConsumiblesPage() {
   };
 
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const nombre = formData.nombre?.trim() || '';
     const parsedPrice = Number(formData.precio);
 
@@ -123,42 +212,47 @@ export default function ConsumiblesPage() {
 
     const tipo = (formData.tipo as 'plato' | 'bebida' | 'postre') || 'plato';
     const descripcion = (formData.descripcion ?? '').trim();
-    const categoria = formData.categoria?.trim();
     const disponible = formData.disponible ?? true;
     const imagen = formData.imagen?.toString().trim() || undefined;
 
-    if (editingConsumible) {
-      updateConsumible(editingConsumible.id, {
-        nombre,
-        tipo,
-        descripcion,
-        precio: parsedPrice,
-        disponible,
-        categoria: categoria || undefined,
-        imagen,
-      });
-    } else {
-      const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `consumible-${Date.now()}`;
+    try {
+      setSaving(true);
+      
+      if (editingConsumible) {
+        // Actualizar consumible existente con PATCH
+        await api.patch<ProductAPI>(`/products/${editingConsumible.id}`, {
+          name: nombre,
+          description: descripcion,
+          price: parsedPrice,
+          productType: toBackendProductType(tipo),
+          active: disponible,
+          imageUrl: imagen,
+        });
+      } else {
+        // Crear nuevo consumible con POST
+        await api.post<ProductAPI>('/products', {
+          name: nombre,
+          description: descripcion,
+          price: parsedPrice,
+          productType: toBackendProductType(tipo),
+          active: disponible,
+          imageUrl: imagen,
+        });
+      }
 
-      const nuevoConsumible: Consumible = {
-        id,
-        nombre,
-        tipo,
-        descripcion,
-        precio: parsedPrice,
-        disponible,
-        categoria: categoria || undefined,
-        imagen,
-      };
-
-      addConsumible(nuevoConsumible);
+      // Recargar lista desde el servidor para asegurar consistencia
+      await fetchConsumibles();
+      
+      setShowDialog(false);
+      setEditingConsumible(null);
+      setSelectedImageFile(null);
+    } catch (error) {
+      console.error('Error al guardar consumible:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo guardar el consumible: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
-
-    setShowDialog(false);
-    setEditingConsumible(null);
-    setSelectedImageFile(null);
   };
 
   const handleDialogToggle = (open: boolean) => {
@@ -186,7 +280,7 @@ export default function ConsumiblesPage() {
     }
   };
 
-  const renderConsumibleCard = (consumible: Consumible) => (
+  const renderConsumibleCard = (consumible: ConsumibleFE) => (
     <Card key={consumible.id} className="hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -205,11 +299,6 @@ export default function ConsumiblesPage() {
             {consumible.descripcion}
           </CardDescription>
         )}
-        {consumible.categoria && (
-          <CardDescription className="text-sm">
-            {consumible.categoria}
-          </CardDescription>
-        )}
       </CardHeader>
       <CardContent className="pt-0">
         <div className="flex items-center justify-between">
@@ -221,6 +310,7 @@ export default function ConsumiblesPage() {
               size="sm"
               variant="outline"
               onClick={() => handleEdit(consumible)}
+              disabled={deleting === consumible.id}
               className="h-8 w-8 p-0"
             >
               <Edit className="w-4 h-4" />
@@ -229,9 +319,14 @@ export default function ConsumiblesPage() {
               size="sm"
               variant="outline"
               onClick={() => handleDelete(consumible.id)}
+              disabled={deleting === consumible.id}
               className="h-8 w-8 p-0"
             >
-              <Trash2 className="w-4 h-4" />
+              {deleting === consumible.id ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -311,18 +406,31 @@ export default function ConsumiblesPage() {
         </div>
 
         {/* Tabs de Categorías */}
-        <Tabs defaultValue="platos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6 bg-white">
-            <TabsTrigger value="platos" className="text-base">
-              Platos ({platos.length})
-            </TabsTrigger>
-            <TabsTrigger value="bebidas" className="text-base">
-              Bebidas ({bebidas.length})
-            </TabsTrigger>
-            <TabsTrigger value="postres" className="text-base">
-              Postres ({postres.length})
-            </TabsTrigger>
-          </TabsList>
+        {loadingConsumibles ? (
+          <Card className="bg-white">
+            <CardContent className="py-12 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                  <Utensils className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2 text-gray-800">Cargando consumibles...</h3>
+                <p className="text-sm text-gray-500">Por favor espera un momento</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Tabs defaultValue="platos" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-6 bg-white">
+              <TabsTrigger value="platos" className="text-base">
+                Platos ({platos.length})
+              </TabsTrigger>
+              <TabsTrigger value="bebidas" className="text-base">
+                Bebidas ({bebidas.length})
+              </TabsTrigger>
+              <TabsTrigger value="postres" className="text-base">
+                Postres ({postres.length})
+              </TabsTrigger>
+            </TabsList>
 
           {/* Contenido de Platos */}
           <TabsContent value="platos">
@@ -418,6 +526,7 @@ export default function ConsumiblesPage() {
             </div>
           </TabsContent>
         </Tabs>
+        )}
       </main>
 
       {/* Dialog de Crear/Editar */}
@@ -464,15 +573,44 @@ export default function ConsumiblesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="categoria">Categoría del consumible</Label>
+              <Label htmlFor="descripcion">Descripción</Label>
               <Input
-                id="categoria"
-                value={formData.categoria}
+                id="descripcion"
+                value={formData.descripcion}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, categoria: e.target.value })
+                  setFormData({ ...formData, descripcion: e.target.value })
                 }
-                placeholder="Ej: Principal, Entrada, etc."
+                placeholder="Descripción del producto"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="precio">Precio *</Label>
+              <Input
+                id="precio"
+                type="number"
+                step="0.01"
+                value={formData.precio}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, precio: Number(e.target.value) })
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                id="disponible"
+                type="checkbox"
+                checked={formData.disponible ?? true}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, disponible: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-gray-300 text-[#1E3A5F] focus:ring-[#1E3A5F]"
+              />
+              <Label htmlFor="disponible" className="cursor-pointer">
+                Producto disponible
+              </Label>
             </div>
 
             <div className="space-y-2">
@@ -508,27 +646,26 @@ export default function ConsumiblesPage() {
                 </div>
               )}
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="precio">Precio *</Label>
-              <Input
-                id="precio"
-                type="number"
-                step="0.01"
-                value={formData.precio}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, precio: Number(e.target.value) })
-                }
-                placeholder="0.00"
-              />
-            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => handleDialogToggle(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => handleDialogToggle(false)}
+              disabled={saving}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSave} className="bg-[#1E3A5F] hover:bg-[#2A4A7F]">
-              {editingConsumible ? 'Guardar Cambios' : 'Crear Consumible'}
+            <Button 
+              onClick={handleSave} 
+              disabled={saving}
+              className="bg-[#1E3A5F] hover:bg-[#2A4A7F]"
+            >
+              {saving 
+                ? 'Guardando...' 
+                : editingConsumible 
+                  ? 'Guardar Cambios' 
+                  : 'Crear Consumible'
+              }
             </Button>
           </DialogFooter>
         </DialogContent>
