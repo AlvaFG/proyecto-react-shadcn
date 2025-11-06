@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -9,7 +9,6 @@ import { Input } from '../../components/ui/input';
 import { User, LogOut, Home, Edit, Plus, CirclePlus, CircleMinus, Trash2 } from 'lucide-react';
 import {
   useAuthStore,
-  useChefConsumiblesStore,
   useChefMenuStore,
   CHEF_DIAS,
   type ChefMenuAsignado,
@@ -17,6 +16,93 @@ import {
   type ChefTurnoId,
 } from '../../lib/store';
 import type { Consumible } from '../../types';
+import { api } from '../../lib/http';
+
+// Tipos para mapear la respuesta del API
+interface ProductAPI {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  productType: string; // "PLATO", "BEBIDA", "POSTRE"
+  active: boolean;
+  imageUrl?: string;
+}
+
+// Interfaces para el endpoint de menús
+interface MenuSectionAPI {
+  platos: ProductAPI[];
+  bebidas: ProductAPI[];
+  postres: ProductAPI[];
+}
+
+interface MealAPI {
+  mealTime: string; // "desayuno", "almuerzo", "merienda", "cena"
+  sections: MenuSectionAPI;
+}
+
+interface DayMenuAPI {
+  day: string; // "lunes", "martes", etc.
+  meals: MealAPI[];
+}
+
+interface MenuResponseDTO {
+  lastModified: string;
+  days: DayMenuAPI[];
+}
+
+// Para crear/actualizar menús
+interface MealCreateDTO {
+  mealTime: string; // "DESAYUNO", "ALMUERZO", "MERIENDA", "CENA"
+  productIds: number[];
+}
+
+interface DayCreateDTO {
+  day: string; // "LUNES", "MARTES", etc.
+  meals: MealCreateDTO[];
+}
+
+interface MenuCreateRequest {
+  days: DayCreateDTO[];
+}
+
+// Función para normalizar el tipo de producto del backend al frontend
+const normalizeProductType = (type: string): Consumible['tipo'] => {
+  const normalized = type.toUpperCase();
+  if (normalized === 'PLATO' || normalized === 'MAIN' || normalized === 'FOOD') return 'plato';
+  if (normalized === 'BEBIDA' || normalized === 'DRINK' || normalized === 'BEVERAGE') return 'bebida';
+  if (normalized === 'POSTRE' || normalized === 'DESSERT') return 'postre';
+  return 'plato'; // Default
+};
+
+// Mapear día del backend (lowercase) al frontend
+const normalizeDayFromAPI = (day: string): ChefDia | null => {
+  const normalized = day.toLowerCase();
+  if (CHEF_DIAS.includes(normalized as ChefDia)) {
+    return normalized as ChefDia;
+  }
+  return null;
+};
+
+// Mapear turno del backend (lowercase) al frontend
+const normalizeMealTimeFromAPI = (mealTime: string): ChefTurnoId | null => {
+  const normalized = mealTime.toLowerCase();
+  const validTurnos: ChefTurnoId[] = ['desayuno', 'almuerzo', 'merienda', 'cena'];
+  if (validTurnos.includes(normalized as ChefTurnoId)) {
+    return normalized as ChefTurnoId;
+  }
+  return null;
+};
+
+// Mapear día del frontend al backend (uppercase)
+const dayToBackend = (day: ChefDia): string => {
+  return day.toUpperCase();
+};
+
+// Mapear turno del frontend al backend (uppercase)
+const mealTimeToBackend = (turno: ChefTurnoId): string => {
+  return turno.toUpperCase();
+};
 
 type DiaSemana = ChefDia;
 type TurnoId = ChefTurnoId;
@@ -67,7 +153,86 @@ export default function GestionSemanalChef() {
   const menusSemana = useChefMenuStore((state) => state.menusSemana);
   const assignMenu = useChefMenuStore((state) => state.assignMenu);
   const clearMenu = useChefMenuStore((state) => state.clearMenu);
-  const consumibles = useChefConsumiblesStore((state) => state.consumibles);
+  const resetMenus = useChefMenuStore((state) => state.resetMenus);
+  
+  // Estados para consumibles del API
+  const [consumibles, setConsumibles] = useState<Consumible[]>([]);
+  const [loadingConsumibles, setLoadingConsumibles] = useState(true);
+  const [loadingMenus, setLoadingMenus] = useState(true);
+  const [savingMenu, setSavingMenu] = useState(false);
+
+  // Cargar consumibles desde el API
+  const fetchConsumibles = async () => {
+    try {
+      setLoadingConsumibles(true);
+      const data = await api.get<ProductAPI[]>('/products');
+      
+      // Mapear los productos del API al formato del frontend
+      const consumiblesMapeados: Consumible[] = (data || []).map((p) => ({
+        id: String(p.id),
+        nombre: p.name,
+        tipo: normalizeProductType(p.productType),
+        descripcion: p.description,
+        precio: p.price,
+        disponible: p.active,
+        imagen: p.imageUrl,
+      }));
+      
+      setConsumibles(consumiblesMapeados);
+    } catch (error) {
+      console.error('Error al cargar consumibles:', error);
+      setConsumibles([]);
+    } finally {
+      setLoadingConsumibles(false);
+    }
+  };
+
+  // Cargar menús desde el API
+  const fetchMenus = async () => {
+    try {
+      setLoadingMenus(true);
+      const data = await api.get<MenuResponseDTO>('/menus');
+      
+      if (!data || !data.days) {
+        // Si no hay menús, limpiar todo
+        resetMenus();
+        return;
+      }
+
+      // Convertir la respuesta del API al formato del store
+      data.days.forEach((dayData) => {
+        const dia = normalizeDayFromAPI(dayData.day);
+        if (!dia) return;
+
+        dayData.meals.forEach((meal) => {
+          const turno = normalizeMealTimeFromAPI(meal.mealTime);
+          if (!turno) return;
+
+          // Extraer IDs de cada sección
+          const platoIds = meal.sections.platos.map((p) => String(p.id));
+          const bebidaIds = meal.sections.bebidas.map((p) => String(p.id));
+          const postreIds = meal.sections.postres.map((p) => String(p.id));
+
+          // Asignar al store
+          assignMenu(turno, dia, {
+            platoIds,
+            bebidaIds,
+            postreIds,
+          });
+        });
+      });
+    } catch (error) {
+      console.error('Error al cargar menús:', error);
+      // Si hay error, no hacer nada (mantener estado actual)
+    } finally {
+      setLoadingMenus(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchConsumibles();
+    fetchMenus();
+  }, []);
 
   const consumiblesMap = useMemo(() => {
     const map = new Map<string, Consumible>();
@@ -210,23 +375,144 @@ export default function GestionSemanalChef() {
       .reduce((sum, precio) => sum + precio, 0);
   };
 
-  const handleGuardarMenu = () => {
+  const handleGuardarMenu = async () => {
     if (!editingCell) return;
 
-    assignMenu(editingCell.turno, editingCell.dia, {
-      platoIds: selectedItems.platos,
-      bebidaIds: selectedItems.bebidas,
-      postreIds: selectedItems.postres,
-    });
+    try {
+      setSavingMenu(true);
 
-    handleDialogToggle(false);
+      // Primero actualizar el estado local
+      assignMenu(editingCell.turno, editingCell.dia, {
+        platoIds: selectedItems.platos,
+        bebidaIds: selectedItems.bebidas,
+        postreIds: selectedItems.postres,
+      });
+
+      // Preparar el payload para enviar TODO el menú semanal al backend
+      const days: DayCreateDTO[] = [];
+
+      CHEF_DIAS.forEach((dia) => {
+        const meals: MealCreateDTO[] = [];
+
+        // Procesar cada turno del día
+        (['desayuno', 'almuerzo', 'merienda', 'cena'] as ChefTurnoId[]).forEach((turno) => {
+          let menu: ChefMenuAsignado | null;
+
+          // Si es la celda que estamos editando, usar los nuevos valores
+          if (turno === editingCell.turno && dia === editingCell.dia) {
+            menu = {
+              platoIds: selectedItems.platos,
+              bebidaIds: selectedItems.bebidas,
+              postreIds: selectedItems.postres,
+            };
+          } else {
+            // Sino, usar el valor actual del store
+            menu = menusSemana[turno][dia];
+          }
+
+          // Solo agregar si tiene productos
+          if (menu && (menu.platoIds.length > 0 || menu.bebidaIds.length > 0 || menu.postreIds.length > 0)) {
+            const productIds = [
+              ...menu.platoIds.map(Number),
+              ...menu.bebidaIds.map(Number),
+              ...menu.postreIds.map(Number),
+            ];
+
+            meals.push({
+              mealTime: mealTimeToBackend(turno),
+              productIds,
+            });
+          }
+        });
+
+        // Solo agregar el día si tiene al menos una comida
+        if (meals.length > 0) {
+          days.push({
+            day: dayToBackend(dia),
+            meals,
+          });
+        }
+      });
+
+      const payload: MenuCreateRequest = { days };
+
+      // Llamar al backend
+      await api.post('/menus/byIds', payload);
+
+      handleDialogToggle(false);
+    } catch (error) {
+      console.error('Error al guardar menú:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo guardar el menú: ${errorMessage}`);
+    } finally {
+      setSavingMenu(false);
+    }
   };
 
-  const handleLimpiarMenu = () => {
+  const handleLimpiarMenu = async () => {
     if (!editingCell) return;
 
-    clearMenu(editingCell.turno, editingCell.dia);
-    handleDialogToggle(false);
+    try {
+      setSavingMenu(true);
+
+      // Primero limpiar el estado local
+      clearMenu(editingCell.turno, editingCell.dia);
+
+      // Preparar el payload para enviar TODO el menú semanal al backend
+      const days: DayCreateDTO[] = [];
+
+      CHEF_DIAS.forEach((dia) => {
+        const meals: MealCreateDTO[] = [];
+
+        // Procesar cada turno del día
+        (['desayuno', 'almuerzo', 'merienda', 'cena'] as ChefTurnoId[]).forEach((turno) => {
+          let menu: ChefMenuAsignado | null;
+
+          // Si es la celda que estamos limpiando, usar null
+          if (turno === editingCell.turno && dia === editingCell.dia) {
+            menu = null;
+          } else {
+            // Sino, usar el valor actual del store
+            menu = menusSemana[turno][dia];
+          }
+
+          // Solo agregar si tiene productos
+          if (menu && (menu.platoIds.length > 0 || menu.bebidaIds.length > 0 || menu.postreIds.length > 0)) {
+            const productIds = [
+              ...menu.platoIds.map(Number),
+              ...menu.bebidaIds.map(Number),
+              ...menu.postreIds.map(Number),
+            ];
+
+            meals.push({
+              mealTime: mealTimeToBackend(turno),
+              productIds,
+            });
+          }
+        });
+
+        // Solo agregar el día si tiene al menos una comida
+        if (meals.length > 0) {
+          days.push({
+            day: dayToBackend(dia),
+            meals,
+          });
+        }
+      });
+
+      const payload: MenuCreateRequest = { days };
+
+      // Llamar al backend
+      await api.post('/menus/byIds', payload);
+
+      handleDialogToggle(false);
+    } catch (error) {
+      console.error('Error al limpiar menú:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo limpiar el menú: ${errorMessage}`);
+    } finally {
+      setSavingMenu(false);
+    }
   };
 
   return (
@@ -282,6 +568,17 @@ export default function GestionSemanalChef() {
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Menú de la Semana Actual</h3>
             <p className="text-sm text-gray-600 mb-6">Día / Turno</p>
 
+            {loadingMenus ? (
+              <div className="py-12 text-center">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                    <Home className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-800">Cargando menús de la semana...</h3>
+                  <p className="text-sm text-gray-500">Por favor espera un momento</p>
+                </div>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -346,6 +643,7 @@ export default function GestionSemanalChef() {
                 </tbody>
               </table>
             </div>
+            )}
           </CardContent>
         </Card>
       </main>
@@ -375,6 +673,18 @@ export default function GestionSemanalChef() {
               <TabsTrigger value="postres">Postres</TabsTrigger>
             </TabsList>
 
+            {loadingConsumibles ? (
+              <div className="mt-6 py-12 text-center">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                    <Plus className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-800">Cargando consumibles...</h3>
+                  <p className="text-sm text-gray-500">Por favor espera un momento</p>
+                </div>
+              </div>
+            ) : (
+              <>
             {(['platos', 'bebidas', 'postres'] as TabKey[]).map((tab) => (
               <TabsContent key={tab} value={tab} className="mt-6">
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
@@ -517,23 +827,33 @@ export default function GestionSemanalChef() {
                 </div>
               </TabsContent>
             ))}
+              </>
+            )}
           </Tabs>
 
           <DialogFooter className="mt-6 space-x-2">
-            <Button variant="outline" onClick={() => handleDialogToggle(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => handleDialogToggle(false)}
+              disabled={savingMenu}
+            >
               Cancelar
             </Button>
             <Button
               variant="ghost"
               onClick={handleLimpiarMenu}
-              disabled={!editingCell}
+              disabled={!editingCell || savingMenu}
               className="text-red-600 hover:text-red-700"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Limpiar menú
+              {savingMenu ? 'Guardando...' : 'Limpiar menú'}
             </Button>
-            <Button onClick={handleGuardarMenu} className="bg-[#1E3A5F] hover:bg-[#2A4A7F]">
-              Guardar Menú
+            <Button 
+              onClick={handleGuardarMenu} 
+              disabled={savingMenu}
+              className="bg-[#1E3A5F] hover:bg-[#2A4A7F]"
+            >
+              {savingMenu ? 'Guardando...' : 'Guardar Menú'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
         '/locations': { target, changeOrigin: true, secure: false },
         '/reservations': { target, changeOrigin: true, secure: false },
         '/products': { target, changeOrigin: true, secure: false },
+        '/menus': { target, changeOrigin: true, secure: false },
         '/api': {
           target,
           changeOrigin: true,
