@@ -34,6 +34,7 @@ function buildUrl(path: string, query?: RequestOptions['query']) {
 async function request<T>(method: HttpMethod, path: string, opts: RequestOptions = {}): Promise<T> {
   const { query, json, headers, ...init } = opts;
   const url = buildUrl(path, query);
+  
   const res = await fetch(url, {
     method,
     headers: {

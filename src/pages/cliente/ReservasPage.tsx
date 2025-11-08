@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
@@ -11,35 +11,42 @@ import type { ReservaStatus } from '../../types';
 import { RESERVA_STATUS_LABEL, RESERVA_STATUS_CLASS } from '../../types';
 import { api } from '@/lib/http';
 
-// Tipos para mapear la respuesta del API
+// Tipos para la API
 interface ReservaAPI {
   id: number;
   userId: number;
   locationId: number;
   locationName?: string;
   locationAddress?: string;
-  mealTime: string;
-  reservationDate: string;
-  reservationTimeSlot: string;
-  status: string;
+  reservationDate: string; // ISO 8601 datetime
+  reservationTimeSlot: string; // Ej: "ALMUERZO_SLOT_1"
+  mealTime: string; // Ej: "ALMUERZO"
+  status: string; // "ACTIVA", "CONFIRMADA", "CANCELADA"
   cost: number;
   createdAt: string;
 }
 
-// Tipo para representar una reserva en el frontend
+interface LocationAPI {
+  id: number;
+  name: string;
+  address: string;
+  capacity: number;
+  imageUrl?: string;
+}
+
+// Tipo para reserva del frontend enriquecida
 interface ReservaFE {
   id: string;
   usuarioId: string;
   sedeId: string;
-  sedeNombre?: string;
-  sedeDireccion?: string;
-  fecha: string;
+  fecha: string; // YYYY-MM-DD
+  mealTime: string; // ALMUERZO, CENA, etc.
+  slotStart: string; // HH:MM
+  slotEnd: string; // HH:MM
   estado: ReservaStatus;
-  meal: string;
-  slotStart?: string;
-  slotEnd?: string;
   total: number;
-  fechaCreacion: string;
+  sedeName: string;
+  sedeAddress: string;
 }
 
 // Mapear horarios de slot a rangos horarios
@@ -65,94 +72,134 @@ const getSlotTimeRange = (slotName: string): { start: string; end: string } => {
 // Función para normalizar el estado del backend al frontend
 const normalizeStatus = (status: string): ReservaStatus => {
   const normalized = status.toUpperCase();
-  if (normalized === 'ACTIVA' || normalized === 'ACTIVE') return 'ACTIVA';
-  if (normalized === 'FINALIZADA' || normalized === 'COMPLETED') return 'FINALIZADA';
-  if (normalized === 'CANCELADA' || normalized === 'CANCELLED' || normalized === 'CANCELED') return 'CANCELADA';
-  return 'ACTIVA'; // Default
+  if (normalized === 'ACTIVA' || normalized === 'CONFIRMADA') return 'ACTIVA';
+  if (normalized === 'CANCELADA') return 'CANCELADA';
+  return 'FINALIZADA';
 };
 
 export default function ReservasPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   
+  // Estados
   const [reservas, setReservas] = useState<ReservaFE[]>([]);
-  const [loadingReservas, setLoadingReservas] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [reservaSeleccionada, setReservaSeleccionada] = useState<ReservaFE | null>(null);
   const [showCancelarDialog, setShowCancelarDialog] = useState(false);
-  const [cancelando, setCancelando] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [justCancelled, setJustCancelled] = useState<Set<string>>(new Set());
 
-  // Cargar reservas desde el API
+  // Cargar reservas y sedes
   useEffect(() => {
-    const fetchReservas = async () => {
-      if (!user) return;
-      
+    const fetchData = async () => {
       try {
-        setLoadingReservas(true);
+        setLoading(true);
         
-        // Cargar reservas y sedes en paralelo
-        const [reservasData, sedesData] = await Promise.all([
+        // Cargar locations y reservas en paralelo
+        const [locationsData, reservasData] = await Promise.all([
+          api.get<LocationAPI[]>('/locations'),
           api.get<ReservaAPI[]>('/reservations'),
-          api.get<{ id: number; name: string; address: string }[]>('/locations')
         ]);
-        
-        // Crear mapa de sedes para búsqueda rápida
-        const sedesMap = new Map(
-          (sedesData || []).map(sede => [sede.id, { nombre: sede.name, direccion: sede.address }])
-        );
-        
-        // Mapear las reservas del API al formato del frontend
+
+        // Crear mapa de locations
+        const locMap = new Map<string, LocationAPI>();
+        (locationsData || []).forEach((loc) => {
+          locMap.set(String(loc.id), loc);
+        });
+
+        // Mapear reservas del API al formato del frontend
         const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
           const timeRange = getSlotTimeRange(r.reservationTimeSlot);
-          const sedeInfo = sedesMap.get(r.locationId);
-          
+          const loc = locMap.get(String(r.locationId));
+
           return {
             id: String(r.id),
             usuarioId: String(r.userId),
             sedeId: String(r.locationId),
-            sedeNombre: r.locationName || sedeInfo?.nombre || 'Sede no especificada',
-            sedeDireccion: r.locationAddress || sedeInfo?.direccion,
-            fecha: r.reservationDate.split('T')[0], // Extraer solo la fecha (YYYY-MM-DD)
-            estado: normalizeStatus(r.status),
-            meal: r.mealTime,
+            fecha: r.reservationDate.split('T')[0], // YYYY-MM-DD
+            mealTime: r.mealTime,
             slotStart: timeRange.start,
             slotEnd: timeRange.end,
+            estado: normalizeStatus(r.status),
             total: r.cost,
-            fechaCreacion: r.createdAt,
+            sedeName: r.locationName || loc?.name || 'Sede desconocida',
+            sedeAddress: r.locationAddress || loc?.address || '',
           };
         });
-        
+
         setReservas(reservasMapeadas);
       } catch (error) {
-        console.error('Error al cargar reservas:', error);
+        console.error('Error al cargar datos:', error);
         setReservas([]);
       } finally {
-        setLoadingReservas(false);
+        setLoading(false);
       }
     };
 
-    fetchReservas();
-  }, [user]);
+    fetchData();
+  }, []);
 
-  // Filtrar y ordenar: ACTIVAS primero, luego FINALIZADAS, luego CANCELADAS
-  const misReservas = reservas
-    .filter((r) => r.usuarioId === user?.id)
-    .sort((a, b) => {
-      const statusOrder: Record<ReservaStatus, number> = {
-        ACTIVA: 0,
-        FINALIZADA: 1,
-        CANCELADA: 2,
-      };
-      
-      const orderDiff = statusOrder[a.estado] - statusOrder[b.estado];
-      if (orderDiff !== 0) return orderDiff;
-      
-      // Dentro del mismo estado, ordenar por fecha (más próximas primero para ACTIVAS)
-      if (a.estado === 'ACTIVA') {
-        return parseISODateLocal(a.fecha).getTime() - parseISODateLocal(b.fecha).getTime();
+  // Filtrar y ordenar reservas según la lógica especificada
+  const misReservas = useMemo(() => {
+    const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    const ayer = new Date(hoy);
+    ayer.setDate(ayer.getDate() - 1);
+
+    // Filtrar reservas del usuario
+    const reservasDelUsuario = reservas.filter((r) => r.usuarioId === user?.id);
+
+    // Categorizar reservas
+    const pendientes: ReservaFE[] = [];
+    const canceladasRecientes: ReservaFE[] = [];
+    const vencidasRecientes: ReservaFE[] = [];
+
+    reservasDelUsuario.forEach((reserva) => {
+      const fechaReserva = parseISODateLocal(reserva.fecha);
+      const soloFecha = new Date(fechaReserva.getFullYear(), fechaReserva.getMonth(), fechaReserva.getDate());
+
+      if (reserva.estado === 'CANCELADA') {
+        // Mostrar canceladas solo si están en justCancelled (recién canceladas)
+        if (justCancelled.has(reserva.id)) {
+          canceladasRecientes.push(reserva);
+        }
+      } else if (reserva.estado === 'ACTIVA') {
+        // Verificar si la reserva está vencida
+        if (soloFecha < hoy) {
+          // Vencida: mostrar solo si es de hoy o ayer
+          if (soloFecha >= ayer) {
+            vencidasRecientes.push(reserva);
+          }
+        } else {
+          // Pendiente (futura o de hoy)
+          pendientes.push(reserva);
+        }
       }
-      // Para FINALIZADAS y CANCELADAS, más recientes primero
-      return parseISODateLocal(b.fecha).getTime() - parseISODateLocal(a.fecha).getTime();
     });
+
+    // Ordenar pendientes por fecha (más próxima primero)
+    pendientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaA - fechaB;
+    });
+
+    // Ordenar canceladas y vencidas por fecha (más reciente primero)
+    canceladasRecientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaB - fechaA;
+    });
+
+    vencidasRecientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaB - fechaA;
+    });
+
+    // Combinar: pendientes primero, luego vencidas, luego canceladas
+    return [...pendientes, ...vencidasRecientes, ...canceladasRecientes];
+  }, [reservas, user?.id, justCancelled]);
 
   const handleCancelar = (reserva: ReservaFE) => {
     setReservaSeleccionada(reserva);
@@ -161,28 +208,31 @@ export default function ReservasPage() {
 
   const confirmarCancelacion = async () => {
     if (!reservaSeleccionada) return;
-    
+
     try {
-      setCancelando(true);
+      setCancelling(true);
       
       // Llamar al endpoint DELETE del backend
       await api.delete(`/reservations/${reservaSeleccionada.id}`);
       
-      // Actualizar el estado local para reflejar la cancelación
-      setReservas(prevReservas =>
-        prevReservas.map(r =>
+      // Actualizar el estado de la reserva localmente
+      setReservas((prev) =>
+        prev.map((r) =>
           r.id === reservaSeleccionada.id ? { ...r, estado: 'CANCELADA' as ReservaStatus } : r
         )
       );
+
+      // Agregar a justCancelled para que se muestre temporalmente
+      setJustCancelled((prev) => new Set(prev).add(reservaSeleccionada.id));
       
       setShowCancelarDialog(false);
       setReservaSeleccionada(null);
     } catch (error) {
       console.error('Error al cancelar reserva:', error);
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      alert(`No se pudo cancelar la reserva: ${errorMessage}\n\nPor favor intente nuevamente.`);
+      alert(`No se pudo cancelar la reserva: ${errorMessage}`);
     } finally {
-      setCancelando(false);
+      setCancelling(false);
     }
   };
 
@@ -195,19 +245,12 @@ export default function ReservasPage() {
 
   const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
-    
-    // Verificar si la reserva es futura
-    const fechaReserva = parseISODateLocal(reserva.fecha);
+    // Combinar fecha + hora
+    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.slotStart}`);
     const ahora = new Date();
-    
-    // Si tiene horario específico, verificar
-    if (reserva.slotStart) {
-      const [hours, minutes] = reserva.slotStart.split(':').map(Number);
-      fechaReserva.setHours(hours, minutes, 0, 0);
-    }
-    
-    // Permitir cancelar si la reserva es futura
-    return fechaReserva > ahora;
+    // 2 horas antes en milisegundos
+    const dosHoras = 2 * 60 * 60 * 1000;
+    return fechaHoraReserva.getTime() - ahora.getTime() > dosHoras;
   };
 
   return (
@@ -292,7 +335,7 @@ export default function ReservasPage() {
         </div>
 
         {/* Reservas Grid */}
-        {loadingReservas ? (
+        {loading ? (
           <Card className="bg-white border-0 shadow-md">
             <CardContent className="p-6 sm:p-8 md:p-12 text-center">
               <div className="flex flex-col items-center justify-center">
@@ -348,10 +391,8 @@ export default function ReservasPage() {
                         <MapPin className="w-4 h-4 text-[#1E3A5F] mt-0.5 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Sede</p>
-                          <p className="text-sm text-gray-700 truncate">{reserva.sedeNombre || 'Sede no especificada'}</p>
-                          {reserva.sedeDireccion && (
-                            <p className="text-xs text-gray-500 truncate">{reserva.sedeDireccion}</p>
-                          )}
+                          <p className="text-sm text-gray-700 truncate">{reserva.sedeName}</p>
+                          <p className="text-xs text-gray-500 truncate">{reserva.sedeAddress}</p>
                         </div>
                       </div>
 
@@ -359,14 +400,8 @@ export default function ReservasPage() {
                         <Clock className="w-4 h-4 text-[#1E3A5F] mt-0.5 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Horario</p>
-                          {reserva.slotStart && reserva.slotEnd ? (
-                            <>
-                              <p className="text-sm text-gray-700">{reserva.meal}</p>
-                              <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-gray-500">Horario no especificado</p>
-                          )}
+                          <p className="text-sm text-gray-700">{reserva.mealTime}</p>
+                          <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
                         </div>
                       </div>
 
@@ -389,13 +424,9 @@ export default function ReservasPage() {
                           variant="destructive"
                           className="w-full bg-red-500 hover:bg-red-600 text-xs md:text-sm"
                           onClick={() => handleCancelar(reserva)}
-                          disabled={cancelando && reservaSeleccionada?.id === reserva.id}
                           aria-label={`Cancelar reserva ${reserva.id}`}
                         >
-                          {cancelando && reservaSeleccionada?.id === reserva.id 
-                            ? 'Cancelando...' 
-                            : 'Cancelar Reserva'
-                          }
+                          Cancelar Reserva
                         </Button>
                       </div>
                     )}
@@ -454,38 +485,30 @@ export default function ReservasPage() {
       </main>
 
       {/* Dialog de Cancelación */}
-      <Dialog open={showCancelarDialog} onOpenChange={(open) => {
-        // Prevenir cierre del diálogo mientras se está cancelando
-        if (!cancelando) {
-          setShowCancelarDialog(open);
-        }
-      }}>
+      <Dialog open={showCancelarDialog} onOpenChange={setShowCancelarDialog}>
         <DialogContent className="sm:max-w-md mx-4">
           <DialogHeader>
             <DialogTitle className="text-lg md:text-xl">Cancelar Reserva</DialogTitle>
             <DialogDescription className="text-sm md:text-base">
-              {cancelando 
-                ? 'Procesando cancelación...' 
-                : '¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.'
-              }
+              ¿Estás seguro que deseas cancelar esta reserva? Esta acción no se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col sm:flex-row gap-3 justify-end mt-4">
             <Button 
               variant="outline" 
               onClick={() => setShowCancelarDialog(false)}
-              disabled={cancelando}
               className="w-full sm:w-auto"
+              disabled={cancelling}
             >
               No, mantener
             </Button>
             <Button 
               variant="destructive" 
               onClick={confirmarCancelacion}
-              disabled={cancelando}
               className="w-full sm:w-auto bg-red-500 hover:bg-red-600"
+              disabled={cancelling}
             >
-              {cancelando ? 'Cancelando...' : 'Sí, cancelar reserva'}
+              {cancelling ? 'Cancelando...' : 'Sí, cancelar reserva'}
             </Button>
           </div>
         </DialogContent>

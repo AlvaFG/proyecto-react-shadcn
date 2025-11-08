@@ -307,120 +307,81 @@ export const useChefConsumiblesStore = create<ChefConsumiblesState>()(
 
 const normalizeIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
 
-export const useChefMenuStore = create<ChefMenuState>()(
-  persist(
-    (set) => ({
-      menusSemana: createEmptyChefMenus(),
-      assignMenu: (turno, dia, menu) => {
-        const normalized: ChefMenuAsignado = {
-          platoIds: normalizeIds(menu.platoIds),
-          bebidaIds: normalizeIds(menu.bebidaIds),
-          postreIds: normalizeIds(menu.postreIds),
-        };
-        set((state) => ({
-          menusSemana: {
-            ...state.menusSemana,
-            [turno]: {
-              ...state.menusSemana[turno],
-              [dia]: normalized,
-            },
-          },
-        }));
+export const useChefMenuStore = create<ChefMenuState>()((set) => ({
+  menusSemana: createEmptyChefMenus(),
+  assignMenu: (turno, dia, menu) => {
+    const normalized: ChefMenuAsignado = {
+      platoIds: normalizeIds(menu.platoIds),
+      bebidaIds: normalizeIds(menu.bebidaIds),
+      postreIds: normalizeIds(menu.postreIds),
+    };
+    set((state) => ({
+      menusSemana: {
+        ...state.menusSemana,
+        [turno]: {
+          ...state.menusSemana[turno],
+          [dia]: normalized,
+        },
       },
-      clearMenu: (turno, dia) =>
-        set((state) => ({
-          menusSemana: {
-            ...state.menusSemana,
-            [turno]: {
-              ...state.menusSemana[turno],
-              [dia]: null,
-            },
-          },
-        })),
-      resetMenus: () => set({ menusSemana: createEmptyChefMenus() }),
-      removeConsumibleFromMenus: (consumibleId) => {
-        set((state) => {
-          let changed = false;
-          const updatedMenus: ChefMenusSemana = { ...state.menusSemana };
+    }));
+  },
+  clearMenu: (turno, dia) =>
+    set((state) => ({
+      menusSemana: {
+        ...state.menusSemana,
+        [turno]: {
+          ...state.menusSemana[turno],
+          [dia]: null,
+        },
+      },
+    })),
+  resetMenus: () => set({ menusSemana: createEmptyChefMenus() }),
+  removeConsumibleFromMenus: (consumibleId) => {
+    set((state) => {
+      let changed = false;
+      const updatedMenus: ChefMenusSemana = { ...state.menusSemana };
 
-          CHEF_TURNOS.forEach((turno) => {
-            const currentDias = state.menusSemana[turno];
-            let turnoChanged = false;
-            const newDias = { ...currentDias };
+      CHEF_TURNOS.forEach((turno) => {
+        const currentDias = state.menusSemana[turno];
+        let turnoChanged = false;
+        const newDias = { ...currentDias };
 
-            CHEF_DIAS.forEach((dia) => {
-              const menu = currentDias[dia];
-              if (menu) {
-                const nextMenu: ChefMenuAsignado = {
-                  platoIds: menu.platoIds.filter((id) => id !== consumibleId),
-                  bebidaIds: menu.bebidaIds.filter((id) => id !== consumibleId),
-                  postreIds: menu.postreIds.filter((id) => id !== consumibleId),
-                };
+        CHEF_DIAS.forEach((dia) => {
+          const menu = currentDias[dia];
+          if (menu) {
+            const nextMenu: ChefMenuAsignado = {
+              platoIds: menu.platoIds.filter((id) => id !== consumibleId),
+              bebidaIds: menu.bebidaIds.filter((id) => id !== consumibleId),
+              postreIds: menu.postreIds.filter((id) => id !== consumibleId),
+            };
 
-                if (
-                  nextMenu.platoIds.length !== menu.platoIds.length ||
-                  nextMenu.bebidaIds.length !== menu.bebidaIds.length ||
-                  nextMenu.postreIds.length !== menu.postreIds.length
-                ) {
-                  turnoChanged = true;
-                  changed = true;
-                  if (
-                    nextMenu.platoIds.length === 0 &&
-                    nextMenu.bebidaIds.length === 0 &&
-                    nextMenu.postreIds.length === 0
-                  ) {
-                    newDias[dia] = null;
-                  } else {
-                    newDias[dia] = nextMenu;
-                  }
-                }
+            if (
+              nextMenu.platoIds.length !== menu.platoIds.length ||
+              nextMenu.bebidaIds.length !== menu.bebidaIds.length ||
+              nextMenu.postreIds.length !== menu.postreIds.length
+            ) {
+              turnoChanged = true;
+              changed = true;
+              if (
+                nextMenu.platoIds.length === 0 &&
+                nextMenu.bebidaIds.length === 0 &&
+                nextMenu.postreIds.length === 0
+              ) {
+                newDias[dia] = null;
+              } else {
+                newDias[dia] = nextMenu;
               }
-            });
-
-            if (turnoChanged) {
-              updatedMenus[turno] = newDias;
             }
-          });
-
-          return changed ? { menusSemana: updatedMenus } : state;
-        });
-      },
-    }),
-    {
-      name: 'chef-menu-storage',
-      storage: createJSONStorage(() => localStorage),
-      version: 1,
-      migrate: (state) => {
-        if (!state) {
-          return { menusSemana: createEmptyChefMenus() };
-        }
-
-        const typedState = state as Partial<ChefMenuState>;
-        if (!typedState.menusSemana) {
-          return { menusSemana: createEmptyChefMenus() };
-        }
-
-        // Limpia claves inválidas que puedan venir de versiones anteriores
-        const sanitized: ChefMenusSemana = createEmptyChefMenus();
-        CHEF_TURNOS.forEach((turno) => {
-          CHEF_DIAS.forEach((dia) => {
-            const menu = typedState.menusSemana?.[turno]?.[dia] ?? null;
-
-            if (menu && typeof menu === 'object') {
-              sanitized[turno][dia] = {
-                platoIds: normalizeIds((menu as ChefMenuAsignado).platoIds ?? []),
-                bebidaIds: normalizeIds((menu as ChefMenuAsignado).bebidaIds ?? []),
-                postreIds: normalizeIds((menu as ChefMenuAsignado).postreIds ?? []),
-              };
-            } else {
-              sanitized[turno][dia] = null;
-            }
-          });
+          }
         });
 
-        return { menusSemana: sanitized };
-      },
-    }
-  )
-);
+        if (turnoChanged) {
+          updatedMenus[turno] = newDias;
+        }
+      });
+
+      return changed ? { menusSemana: updatedMenus } : state;
+    });
+  },
+}));
 
