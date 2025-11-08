@@ -84,7 +84,7 @@ export default function PagoPage() {
     actualizarReserva(reserva.id, {
       items: reserva.items,
       total: reserva.total,
-      estado: 'pagada',
+      estado: 'FINALIZADA',
       metodoPago
     });
 

@@ -35,6 +35,7 @@ export default function NuevaReservaPage() {
 
   
   const [sedes, setSedes] = useState<Sede[]>([]);
+  const [loadingSedes, setLoadingSedes] = useState(true);
   const [sedeSeleccionada, setSedeSeleccionada] = useState<Sede | null>(null);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>('');
   const [mealSeleccionado, setMealSeleccionado] = useState<Meal | null>(null);
@@ -42,11 +43,13 @@ export default function NuevaReservaPage() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, _setErrorMessage] = useState('');
+  const [postingReserva, setPostingReserva] = useState(false);
 
   
 
   useEffect(() => {
     (async () => {
+      setLoadingSedes(true);
       try {
         type LocationApi = { id: number | string; name: string; address: string; capacity: number; imageUrl?: string };
         const data = await api.get<LocationApi[]>('/locations');
@@ -60,6 +63,8 @@ export default function NuevaReservaPage() {
         setSedes(mapped);
       } catch (_) {
         setSedes([]);
+      } finally {
+        setLoadingSedes(false);
       }
     })();
   }, []);
@@ -81,26 +86,55 @@ export default function NuevaReservaPage() {
     }
   };
 
-  const handleConfirmar = () => {
+  const handleConfirmar = async () => {
     if (!user || !sedeSeleccionada || !fechaSeleccionada || !slotSeleccionado) return;
 
-    const nuevaReserva: Reserva = {
-      id: `R${String(Date.now()).slice(-3)}`,
-      usuarioId: user.id,
-      sedeId: sedeSeleccionada.id,
-      fecha: fechaSeleccionada,
-      estado: 'ACTIVA',
-      items: [],
-      total: COSTO_RESERVA,
-      fechaCreacion: new Date().toISOString(),
-      meal: slotSeleccionado.meal,
-      slotId: slotSeleccionado.id,
-      slotStart: slotSeleccionado.start,
-      slotEnd: slotSeleccionado.end,
-    };
+    try {
+      setPostingReserva(true);
+      const locationId = Number(sedeSeleccionada.id);
+      if (Number.isNaN(locationId)) {
+        throw new Error('ID de sede inválido.');
+      }
 
-    agregarReserva(nuevaReserva);
-    setShowSuccessDialog(true);
+      const userId = Number(user.id);
+      if (Number.isNaN(userId)) {
+        throw new Error('ID de usuario inválido.');
+      }
+
+      const mealTime = slotSeleccionado.meal.toUpperCase();
+      const reservationDate = `${fechaSeleccionada}T${slotSeleccionado.start}:00`;
+
+      await api.post<unknown>('/reservations', {
+        userId,
+        locationId,
+        mealTime,
+        reservationDate,
+      });
+
+      const nuevaReserva: Reserva = {
+        id: `R${String(Date.now()).slice(-3)}`,
+        usuarioId: user.id,
+        sedeId: sedeSeleccionada.id,
+        fecha: fechaSeleccionada,
+        estado: 'ACTIVA',
+        items: [],
+        total: COSTO_RESERVA,
+        fechaCreacion: new Date().toISOString(),
+        meal: slotSeleccionado.meal,
+        slotId: slotSeleccionado.id,
+        slotStart: slotSeleccionado.start,
+        slotEnd: slotSeleccionado.end,
+      };
+
+      agregarReserva(nuevaReserva);
+      setShowSuccessDialog(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo crear la reserva';
+      _setErrorMessage(msg);
+      setShowErrorDialog(true);
+    } finally {
+      setPostingReserva(false);
+    }
   };
 
   const canProceed = () => {
@@ -236,8 +270,11 @@ export default function NuevaReservaPage() {
           {currentStep === 1 && (
             <div className="space-y-4 md:space-y-6">
               <h2 className="text-xl md:text-2xl font-bold text-[#1E3A5F]">Selecciona una Sede</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {sedes.map((sede) => (
+              {loadingSedes ? (
+                <div className="text-sm text-gray-600 animate-pulse">Cargando sedes...</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                  {sedes.map((sede) => (
                   <Card
                     key={sede.id}
                     className={`p-4 md:p-6 cursor-pointer transition-all border-2 hover:shadow-lg ${
@@ -262,7 +299,11 @@ export default function NuevaReservaPage() {
                     </div>
                   </Card>
                 ))}
+                {sedes.length === 0 && (
+                  <div className="text-sm text-gray-600">No hay sedes disponibles.</div>
+                )}
               </div>
+              )}
             </div>
           )}
 
@@ -472,10 +513,10 @@ export default function NuevaReservaPage() {
                     <div className="flex justify-end">
                       <Button
                         onClick={handleConfirmar}
-                        disabled={!canProceed()}
+                        disabled={!canProceed() || postingReserva}
                         className="w-full md:w-auto bg-[#1E3A5F] hover:bg-[#2a5080] text-white px-6 md:px-8 py-2 md:py-3"
                       >
-                        Confirmar Reserva
+                        {postingReserva ? 'Confirmando...' : 'Confirmar Reserva'}
                       </Button>
                     </div>
                   </div>

@@ -1,0 +1,11 @@
+# No incluir archivos de desarrollo en el despliegue
+.env.development
+.env.local
+*.local
+
+# Archivos de editor
+.vscode
+.idea
+
+# Logs
+*.log

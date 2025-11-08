@@ -13,11 +13,13 @@ function buildUrl(path: string, query?: RequestOptions['query']) {
   } else if (isDev && path.startsWith('/')) {
     // En desarrollo, usar ruta relativa para aprovechar el proxy de Vite
     urlStr = path; // ej: /api/... será proxied a VITE_API_BASE_URL
+  } else if (!isDev && (path.startsWith('/api/') || path.startsWith('/locations/'))) {
+    // En producción (Vercel), usar rutas relativas que serán manejadas por rewrites
+    urlStr = path;
   } else {
-    // En producción, si el path viene como "/api/...", quitar el prefijo para apuntar al root del BE
-    const normalized = (!isDev && path.startsWith('/api/')) ? path.substring(4) : path;
+    // Fallback: construir URL completa
     const cleanBase = API_BASE_URL.replace(/\/+$/, '');
-    const cleanPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
     urlStr = cleanBase + cleanPath;
   }
   const url = new URL(urlStr, typeof window !== 'undefined' ? window.location.origin : undefined);

@@ -16,6 +16,8 @@ interface ReservaAPI {
   id: number;
   userId: number;
   locationId: number;
+  locationName?: string;
+  locationAddress?: string;
   reservationDate: string; // ISO 8601 datetime
   reservationTimeSlot: string; // Ej: "ALMUERZO_SLOT_1"
   mealTime: string; // Ej: "ALMUERZO"
@@ -38,13 +40,34 @@ interface ReservaFE {
   usuarioId: string;
   sedeId: string;
   fecha: string; // YYYY-MM-DD
-  hora: string; // HH:MM
   mealTime: string; // ALMUERZO, CENA, etc.
+  slotStart: string; // HH:MM
+  slotEnd: string; // HH:MM
   estado: ReservaStatus;
   total: number;
   sedeName: string;
   sedeAddress: string;
 }
+
+// Mapear horarios de slot a rangos horarios
+const getSlotTimeRange = (slotName: string): { start: string; end: string } => {
+  const slotMap: Record<string, { start: string; end: string }> = {
+    'DESAYUNO_SLOT_1': { start: '07:00', end: '08:00' },
+    'DESAYUNO_SLOT_2': { start: '08:00', end: '09:00' },
+    'DESAYUNO_SLOT_3': { start: '09:00', end: '10:00' },
+    'DESAYUNO_SLOT_4': { start: '10:00', end: '11:00' },
+    'ALMUERZO_SLOT_1': { start: '12:00', end: '13:00' },
+    'ALMUERZO_SLOT_2': { start: '13:00', end: '14:00' },
+    'ALMUERZO_SLOT_3': { start: '14:00', end: '15:00' },
+    'MERIENDA_SLOT_1': { start: '16:00', end: '17:00' },
+    'MERIENDA_SLOT_2': { start: '17:00', end: '18:00' },
+    'MERIENDA_SLOT_3': { start: '18:00', end: '19:00' },
+    'CENA_SLOT_1': { start: '20:00', end: '21:00' },
+    'CENA_SLOT_2': { start: '21:00', end: '22:00' },
+  };
+  
+  return slotMap[slotName] || { start: '00:00', end: '00:00' };
+};
 
 // Función para normalizar el estado del backend al frontend
 const normalizeStatus = (status: string): ReservaStatus => {
@@ -86,20 +109,21 @@ export default function ReservasPage() {
 
         // Mapear reservas del API al formato del frontend
         const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
-          const dateTime = new Date(r.reservationDate);
+          const timeRange = getSlotTimeRange(r.reservationTimeSlot);
           const loc = locMap.get(String(r.locationId));
 
           return {
             id: String(r.id),
             usuarioId: String(r.userId),
             sedeId: String(r.locationId),
-            fecha: dateTime.toISOString().split('T')[0], // YYYY-MM-DD
-            hora: dateTime.toTimeString().slice(0, 5), // HH:MM
+            fecha: r.reservationDate.split('T')[0], // YYYY-MM-DD
             mealTime: r.mealTime,
+            slotStart: timeRange.start,
+            slotEnd: timeRange.end,
             estado: normalizeStatus(r.status),
             total: r.cost,
-            sedeName: loc?.name || 'Sede desconocida',
-            sedeAddress: loc?.address || '',
+            sedeName: r.locationName || loc?.name || 'Sede desconocida',
+            sedeAddress: r.locationAddress || loc?.address || '',
           };
         });
 
@@ -117,22 +141,13 @@ export default function ReservasPage() {
 
   // Filtrar y ordenar reservas según la lógica especificada
   const misReservas = useMemo(() => {
-    console.log('=== DEBUG RESERVAS ===');
-    console.log('Total reservas:', reservas.length);
-    console.log('User ID:', user?.id);
-    console.log('Reservas del usuario antes de filtrar:', reservas.filter((r) => r.usuarioId === user?.id).length);
-    
     const ahora = new Date();
     const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
     const ayer = new Date(hoy);
     ayer.setDate(ayer.getDate() - 1);
-    
-    console.log('Hoy:', hoy);
-    console.log('Ayer:', ayer);
 
     // Filtrar reservas del usuario
     const reservasDelUsuario = reservas.filter((r) => r.usuarioId === user?.id);
-    console.log('Reservas del usuario:', reservasDelUsuario);
 
     // Categorizar reservas
     const pendientes: ReservaFE[] = [];
@@ -142,14 +157,6 @@ export default function ReservasPage() {
     reservasDelUsuario.forEach((reserva) => {
       const fechaReserva = parseISODateLocal(reserva.fecha);
       const soloFecha = new Date(fechaReserva.getFullYear(), fechaReserva.getMonth(), fechaReserva.getDate());
-      
-      console.log(`Reserva ${reserva.id}:`, {
-        fecha: reserva.fecha,
-        soloFecha,
-        estado: reserva.estado,
-        esPasada: soloFecha < hoy,
-        esDeAyerOHoy: soloFecha >= ayer,
-      });
 
       if (reserva.estado === 'CANCELADA') {
         // Mostrar canceladas solo si están en justCancelled (recién canceladas)
@@ -169,10 +176,6 @@ export default function ReservasPage() {
         }
       }
     });
-    
-    console.log('Pendientes:', pendientes.length);
-    console.log('Vencidas recientes:', vencidasRecientes.length);
-    console.log('Canceladas recientes:', canceladasRecientes.length);
 
     // Ordenar pendientes por fecha (más próxima primero)
     pendientes.sort((a, b) => {
@@ -195,10 +198,7 @@ export default function ReservasPage() {
     });
 
     // Combinar: pendientes primero, luego vencidas, luego canceladas
-    const resultado = [...pendientes, ...vencidasRecientes, ...canceladasRecientes];
-    console.log('Total a mostrar:', resultado.length);
-    console.log('=== FIN DEBUG ===');
-    return resultado;
+    return [...pendientes, ...vencidasRecientes, ...canceladasRecientes];
   }, [reservas, user?.id, justCancelled]);
 
   const handleCancelar = (reserva: ReservaFE) => {
@@ -246,7 +246,7 @@ export default function ReservasPage() {
   const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
     // Combinar fecha + hora
-    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.hora}`);
+    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.slotStart}`);
     const ahora = new Date();
     // 2 horas antes en milisegundos
     const dosHoras = 2 * 60 * 60 * 1000;
@@ -401,7 +401,7 @@ export default function ReservasPage() {
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Horario</p>
                           <p className="text-sm text-gray-700">{reserva.mealTime}</p>
-                          <p className="text-xs text-gray-500">{reserva.hora}</p>
+                          <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
                         </div>
                       </div>
 
