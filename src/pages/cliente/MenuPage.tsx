@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Card, CardContent } from '../../components/ui/card';
@@ -10,7 +10,96 @@ import { useAuthStore } from '../../lib/store';
 import { api } from '@/lib/http'
 import type { Sede } from '@/types'
 import { HORARIOS_SERVICIO } from '@/lib/config'
-import { consumibles } from '../../lib/data/mockData'
+
+// Tipos para el API de menús
+interface ProductAPI {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  productType: string;
+  active: boolean;
+  imageUrl?: string;
+}
+
+interface MenuSectionAPI {
+  platos: ProductAPI[];
+  bebidas: ProductAPI[];
+  postres: ProductAPI[];
+}
+
+interface MealAPI {
+  mealTime: string;
+  sections: MenuSectionAPI;
+}
+
+interface DayMenuAPI {
+  day: string;
+  meals: MealAPI[];
+}
+
+interface MenuResponseDTO {
+  lastModified: string;
+  days: DayMenuAPI[];
+}
+
+// Tipo para productos del frontend
+interface Producto {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  precio: number;
+  imagen?: string;
+  disponible: boolean;
+}
+
+// Días de la semana
+type DiasSemana = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes';
+const DIAS: DiasSemana[] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
+
+const DIA_LABELS: Record<DiasSemana, string> = {
+  lunes: 'Lunes',
+  martes: 'Martes',
+  miercoles: 'Miércoles',
+  jueves: 'Jueves',
+  viernes: 'Viernes',
+};
+
+// Horarios de comida
+type HorarioComida = 'desayuno' | 'almuerzo' | 'merienda' | 'cena';
+const HORARIOS: HorarioComida[] = ['desayuno', 'almuerzo', 'merienda', 'cena'];
+
+const HORARIO_LABELS: Record<HorarioComida, string> = {
+  desayuno: 'Desayuno',
+  almuerzo: 'Almuerzo',
+  merienda: 'Merienda',
+  cena: 'Cena',
+};
+
+// Función para obtener el día por defecto según la fecha actual
+const getDiaDefault = (): DiasSemana => {
+  const today = new Date().getDay(); // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  
+  // Si es lunes a viernes (1-5), retornar ese día
+  if (today >= 1 && today <= 5) {
+    return DIAS[today - 1];
+  }
+  
+  // Si es sábado o domingo, retornar lunes
+  return 'lunes';
+};
+
+// Función para obtener el horario por defecto según la hora actual
+const getHorarioDefault = (): HorarioComida => {
+  const now = new Date();
+  const hour = now.getHours();
+  
+  // Determinar horario según la hora del día
+  if (hour >= 7 && hour < 12) return 'desayuno';
+  if (hour >= 12 && hour < 16) return 'almuerzo';
+  if (hour >= 16 && hour < 20) return 'merienda';
+  return 'cena';
+};
 
 export default function MenuPage() {
 
@@ -18,7 +107,17 @@ export default function MenuPage() {
   const { user, logout } = useAuthStore();
   const [sedesState, setSedesState] = useState<Sede[]>([]);
   const [loadingSedes, setLoadingSedes] = useState(true);
+  
+  // Estado para menús
+  const [menusData, setMenusData] = useState<MenuResponseDTO | null>(null);
+  const [loadingMenus, setLoadingMenus] = useState(true);
+  
+  // Estado para filtros - independientes entre sí
+  const [selectedDay, setSelectedDay] = useState<DiasSemana>(getDiaDefault());
+  const [selectedHorario, setSelectedHorario] = useState<HorarioComida>(getHorarioDefault());
+  const [selectedType, setSelectedType] = useState<'platos' | 'bebidas' | 'postres'>('platos');
 
+  // Cargar sedes
   useEffect(() => {
     (async () => {
       setLoadingSedes(true);
@@ -36,16 +135,92 @@ export default function MenuPage() {
         setLoadingSedes(false);
       } catch (_) {
         setLoadingSedes(false);
-        // si falla, sedesState queda vacío y se usa el mock
+      }
+    })();
+  }, []);
+
+  // Cargar menús desde el backend
+  useEffect(() => {
+    (async () => {
+      setLoadingMenus(true);
+      try {
+        const data = await api.get<MenuResponseDTO>('/menus');
+        setMenusData(data);
+      } catch (error) {
+        console.error('Error al cargar menús:', error);
+        setMenusData(null);
+      } finally {
+        setLoadingMenus(false);
       }
     })();
   }, []);
 
   const sedesList: Sede[] = sedesState;
 
-  const platos = consumibles.filter(c => c.tipo === 'plato');
-  const bebidas = consumibles.filter(c => c.tipo === 'bebida');
-  const postres = consumibles.filter(c => c.tipo === 'postre');
+  // Procesar menús para obtener productos filtrados por día, horario y tipo
+  const productosDelDia = useMemo(() => {
+    if (!menusData || !menusData.days) {
+      return { platos: [], bebidas: [], postres: [] };
+    }
+
+    // Buscar el día seleccionado en los datos
+    const dayData = menusData.days.find(
+      (d) => d.day.toLowerCase() === selectedDay
+    );
+
+    if (!dayData || !dayData.meals || dayData.meals.length === 0) {
+      return { platos: [], bebidas: [], postres: [] };
+    }
+
+    // Buscar la comida/horario específico
+    const mealData = dayData.meals.find(
+      (m) => m.mealTime.toLowerCase() === selectedHorario
+    );
+
+    if (!mealData) {
+      return { platos: [], bebidas: [], postres: [] };
+    }
+
+    // Mapear platos
+    const platos: Producto[] = mealData.sections.platos.map((p) => ({
+      id: String(p.id),
+      nombre: p.name,
+      descripcion: p.description,
+      precio: p.price,
+      imagen: p.imageUrl,
+      disponible: p.active,
+    }));
+
+    // Mapear bebidas
+    const bebidas: Producto[] = mealData.sections.bebidas.map((p) => ({
+      id: String(p.id),
+      nombre: p.name,
+      descripcion: p.description,
+      precio: p.price,
+      imagen: p.imageUrl,
+      disponible: p.active,
+    }));
+
+    // Mapear postres
+    const postres: Producto[] = mealData.sections.postres.map((p) => ({
+      id: String(p.id),
+      nombre: p.name,
+      descripcion: p.description,
+      precio: p.price,
+      imagen: p.imageUrl,
+      disponible: p.active,
+    }));
+
+    return {
+      platos,
+      bebidas,
+      postres,
+    };
+  }, [menusData, selectedDay, selectedHorario]);
+
+  const platos = productosDelDia.platos;
+  const bebidas = productosDelDia.bebidas;
+  const postres = productosDelDia.postres;
 
   const handleLogout = () => {
     logout();
@@ -161,8 +336,61 @@ export default function MenuPage() {
           </CardContent>
         </Card>
 
+        {/* Selector de Días y Comidas */}
+        <Card className="bg-white border-0 shadow-md">
+          <CardContent className="p-4 md:p-6">
+            <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-3 md:mb-4 text-left">Día y Comida</h3>
+            
+            {/* Selector de Días */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2 text-left">Día de la Semana</p>
+              <div className="overflow-x-auto [-ms-overflow-style:'none'] [scrollbar-width:'none'] [&::-webkit-scrollbar]:hidden">
+                <div className="grid grid-cols-5 gap-2 min-w-max md:min-w-0">
+                  {DIAS.map((dia) => (
+                    <Button
+                      key={dia}
+                      onClick={() => setSelectedDay(dia)}
+                      variant={selectedDay === dia ? 'default' : 'outline'}
+                      className={`text-xs md:text-sm px-3 md:px-4 py-2 md:py-2.5 ${
+                        selectedDay === dia
+                          ? 'bg-[#1E3A5F] text-white hover:bg-[#2A4A7F]'
+                          : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {DIA_LABELS[dia]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de Horarios */}
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2 text-left">Horario de Comida</p>
+              <div className="overflow-x-auto [-ms-overflow-style:'none'] [scrollbar-width:'none'] [&::-webkit-scrollbar]:hidden">
+                <div className="grid grid-cols-4 gap-2 min-w-max md:min-w-0">
+                  {HORARIOS.map((horario) => (
+                    <Button
+                      key={horario}
+                      onClick={() => setSelectedHorario(horario)}
+                      variant={selectedHorario === horario ? 'default' : 'outline'}
+                      className={`text-xs md:text-sm px-3 md:px-4 py-2 md:py-2.5 ${
+                        selectedHorario === horario
+                          ? 'bg-[#1E3A5F] text-white hover:bg-[#2A4A7F]'
+                          : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {HORARIO_LABELS[horario]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Tabs de Menú */}
-        <Tabs defaultValue="platos" className="w-full">
+        <Tabs value={selectedType} onValueChange={(v) => setSelectedType(v as 'platos' | 'bebidas' | 'postres')} className="w-full">
           <div className="overflow-x-auto [-ms-overflow-style:'none'] [scrollbar-width:'none'] [&::-webkit-scrollbar]:hidden">
             <TabsList className="grid w-full min-w-max md:min-w-0 grid-cols-3 mb-4 md:mb-6 h-auto">
               <TabsTrigger 
@@ -187,10 +415,19 @@ export default function MenuPage() {
           </div>
 
           <TabsContent value="platos">
-            {platos.length === 0 ? (
+            {loadingMenus ? (
+              <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3 animate-pulse">
+                    <UtensilsCrossed className="w-8 h-8 md:w-12 md:h-12 text-gray-400" />
+                  </div>
+                  <p>Cargando menús...</p>
+                </div>
+              </div>
+            ) : platos.length === 0 ? (
               <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
                 <UtensilsCrossed className="w-12 h-12 md:w-16 md:h-16 text-gray-300 mx-auto mb-3" />
-                <p>No hay platos disponibles en esta categoría.</p>
+                <p>No hay platos disponibles para {DIA_LABELS[selectedDay]} - {HORARIO_LABELS[selectedHorario]}.</p>
               </div>
             ) : (
               <div className="grid gap-4 sm:gap-5 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -213,12 +450,9 @@ export default function MenuPage() {
                         </Badge>
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{plato.descripcion}</p>
-                      {plato.categoria && (
-                        <p className="text-xs text-gray-500 text-left">{plato.categoria}</p>
-                      )}
                       <div className="mt-auto pt-2">
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">
-                          Disponible
+                        <Badge className={`text-xs ${plato.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
+                          {plato.disponible ? 'Disponible' : 'No disponible'}
                         </Badge>
                       </div>
                     </CardContent>
@@ -229,10 +463,19 @@ export default function MenuPage() {
           </TabsContent>
 
           <TabsContent value="bebidas">
-            {bebidas.length === 0 ? (
+            {loadingMenus ? (
+              <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3 animate-pulse">
+                    <UtensilsCrossed className="w-8 h-8 md:w-12 md:h-12 text-gray-400" />
+                  </div>
+                  <p>Cargando menús...</p>
+                </div>
+              </div>
+            ) : bebidas.length === 0 ? (
               <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
                 <UtensilsCrossed className="w-12 h-12 md:w-16 md:h-16 text-gray-300 mx-auto mb-3" />
-                <p>No hay bebidas disponibles en esta categoría.</p>
+                <p>No hay bebidas disponibles para {DIA_LABELS[selectedDay]} - {HORARIO_LABELS[selectedHorario]}.</p>
               </div>
             ) : (
               <div className="grid gap-4 sm:gap-5 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -256,8 +499,8 @@ export default function MenuPage() {
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{bebida.descripcion}</p>
                       <div className="mt-auto pt-2">
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">
-                          Disponible
+                        <Badge className={`text-xs ${bebida.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
+                          {bebida.disponible ? 'Disponible' : 'No disponible'}
                         </Badge>
                       </div>
                     </CardContent>
@@ -268,10 +511,19 @@ export default function MenuPage() {
           </TabsContent>
 
           <TabsContent value="postres">
-            {postres.length === 0 ? (
+            {loadingMenus ? (
+              <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3 animate-pulse">
+                    <UtensilsCrossed className="w-8 h-8 md:w-12 md:h-12 text-gray-400" />
+                  </div>
+                  <p>Cargando menús...</p>
+                </div>
+              </div>
+            ) : postres.length === 0 ? (
               <div className="text-center text-sm text-gray-500 py-10 md:py-12 bg-white rounded-lg border">
                 <UtensilsCrossed className="w-12 h-12 md:w-16 md:h-16 text-gray-300 mx-auto mb-3" />
-                <p>No hay postres disponibles en esta categoría.</p>
+                <p>No hay postres disponibles para {DIA_LABELS[selectedDay]} - {HORARIO_LABELS[selectedHorario]}.</p>
               </div>
             ) : (
               <div className="grid gap-4 sm:gap-5 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -295,8 +547,8 @@ export default function MenuPage() {
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{postre.descripcion}</p>
                       <div className="mt-auto pt-2">
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">
-                          Disponible
+                        <Badge className={`text-xs ${postre.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
+                          {postre.disponible ? 'Disponible' : 'No disponible'}
                         </Badge>
                       </div>
                     </CardContent>

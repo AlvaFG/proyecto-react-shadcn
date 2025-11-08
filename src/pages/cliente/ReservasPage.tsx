@@ -1,72 +1,239 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Badge } from '../../components/ui/badge';
-import { useAuthStore, useReservaStore } from '../../lib/store';
+import { useAuthStore } from '../../lib/store';
 import { MapPin, Clock, AlertTriangle, Plus, ArrowLeft, User, LogOut } from 'lucide-react';
-import { sedes, turnos } from '../../lib/data/mockData';
 import { parseISODateLocal, formatFechaLargaEs } from '../../lib/date';
-import type { Reserva, ReservaStatus } from '../../types';
+import type { ReservaStatus } from '../../types';
 import { RESERVA_STATUS_LABEL, RESERVA_STATUS_CLASS } from '../../types';
+import { api } from '@/lib/http';
+
+// Tipos para la API
+interface ReservaAPI {
+  id: number;
+  userId: number;
+  locationId: number;
+  reservationDate: string; // ISO 8601 datetime
+  reservationTimeSlot: string; // Ej: "ALMUERZO_SLOT_1"
+  mealTime: string; // Ej: "ALMUERZO"
+  status: string; // "ACTIVA", "CONFIRMADA", "CANCELADA"
+  cost: number;
+  createdAt: string;
+}
+
+interface LocationAPI {
+  id: number;
+  name: string;
+  address: string;
+  capacity: number;
+  imageUrl?: string;
+}
+
+// Tipo para reserva del frontend enriquecida
+interface ReservaFE {
+  id: string;
+  usuarioId: string;
+  sedeId: string;
+  fecha: string; // YYYY-MM-DD
+  hora: string; // HH:MM
+  mealTime: string; // ALMUERZO, CENA, etc.
+  estado: ReservaStatus;
+  total: number;
+  sedeName: string;
+  sedeAddress: string;
+}
+
+// Función para normalizar el estado del backend al frontend
+const normalizeStatus = (status: string): ReservaStatus => {
+  const normalized = status.toUpperCase();
+  if (normalized === 'ACTIVA' || normalized === 'CONFIRMADA') return 'ACTIVA';
+  if (normalized === 'CANCELADA') return 'CANCELADA';
+  return 'FINALIZADA';
+};
 
 export default function ReservasPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const reservas = useReservaStore((state) => state.reservas);
-  const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
   
-  const [reservaSeleccionada, setReservaSeleccionada] = useState<Reserva | null>(null);
+  // Estados
+  const [reservas, setReservas] = useState<ReservaFE[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reservaSeleccionada, setReservaSeleccionada] = useState<ReservaFE | null>(null);
   const [showCancelarDialog, setShowCancelarDialog] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [justCancelled, setJustCancelled] = useState<Set<string>>(new Set());
 
-  // Nota: usamos helpers compartidos en lib/date para evitar desfases por UTC.
+  // Cargar reservas y sedes
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Cargar locations y reservas en paralelo
+        const [locationsData, reservasData] = await Promise.all([
+          api.get<LocationAPI[]>('/locations'),
+          api.get<ReservaAPI[]>('/reservations'),
+        ]);
 
-  // Filtrar y ordenar: ACTIVAS primero, luego FINALIZADAS, luego CANCELADAS
-  const misReservas = reservas
-    .filter((r) => r.usuarioId === user?.id)
-    .sort((a, b) => {
-      const statusOrder: Record<ReservaStatus, number> = {
-        ACTIVA: 0,
-        FINALIZADA: 1,
-        CANCELADA: 2,
-      };
-      
-      const orderDiff = statusOrder[a.estado] - statusOrder[b.estado];
-      if (orderDiff !== 0) return orderDiff;
-      
-      // Dentro del mismo estado, ordenar por fecha (más próximas primero para ACTIVAS)
-      if (a.estado === 'ACTIVA') {
-        return parseISODateLocal(a.fecha).getTime() - parseISODateLocal(b.fecha).getTime();
+        // Crear mapa de locations
+        const locMap = new Map<string, LocationAPI>();
+        (locationsData || []).forEach((loc) => {
+          locMap.set(String(loc.id), loc);
+        });
+
+        // Mapear reservas del API al formato del frontend
+        const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
+          const dateTime = new Date(r.reservationDate);
+          const loc = locMap.get(String(r.locationId));
+
+          return {
+            id: String(r.id),
+            usuarioId: String(r.userId),
+            sedeId: String(r.locationId),
+            fecha: dateTime.toISOString().split('T')[0], // YYYY-MM-DD
+            hora: dateTime.toTimeString().slice(0, 5), // HH:MM
+            mealTime: r.mealTime,
+            estado: normalizeStatus(r.status),
+            total: r.cost,
+            sedeName: loc?.name || 'Sede desconocida',
+            sedeAddress: loc?.address || '',
+          };
+        });
+
+        setReservas(reservasMapeadas);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        setReservas([]);
+      } finally {
+        setLoading(false);
       }
-      // Para FINALIZADAS y CANCELADAS, más recientes primero
-      return parseISODateLocal(b.fecha).getTime() - parseISODateLocal(a.fecha).getTime();
+    };
+
+    fetchData();
+  }, []);
+
+  // Filtrar y ordenar reservas según la lógica especificada
+  const misReservas = useMemo(() => {
+    console.log('=== DEBUG RESERVAS ===');
+    console.log('Total reservas:', reservas.length);
+    console.log('User ID:', user?.id);
+    console.log('Reservas del usuario antes de filtrar:', reservas.filter((r) => r.usuarioId === user?.id).length);
+    
+    const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    const ayer = new Date(hoy);
+    ayer.setDate(ayer.getDate() - 1);
+    
+    console.log('Hoy:', hoy);
+    console.log('Ayer:', ayer);
+
+    // Filtrar reservas del usuario
+    const reservasDelUsuario = reservas.filter((r) => r.usuarioId === user?.id);
+    console.log('Reservas del usuario:', reservasDelUsuario);
+
+    // Categorizar reservas
+    const pendientes: ReservaFE[] = [];
+    const canceladasRecientes: ReservaFE[] = [];
+    const vencidasRecientes: ReservaFE[] = [];
+
+    reservasDelUsuario.forEach((reserva) => {
+      const fechaReserva = parseISODateLocal(reserva.fecha);
+      const soloFecha = new Date(fechaReserva.getFullYear(), fechaReserva.getMonth(), fechaReserva.getDate());
+      
+      console.log(`Reserva ${reserva.id}:`, {
+        fecha: reserva.fecha,
+        soloFecha,
+        estado: reserva.estado,
+        esPasada: soloFecha < hoy,
+        esDeAyerOHoy: soloFecha >= ayer,
+      });
+
+      if (reserva.estado === 'CANCELADA') {
+        // Mostrar canceladas solo si están en justCancelled (recién canceladas)
+        if (justCancelled.has(reserva.id)) {
+          canceladasRecientes.push(reserva);
+        }
+      } else if (reserva.estado === 'ACTIVA') {
+        // Verificar si la reserva está vencida
+        if (soloFecha < hoy) {
+          // Vencida: mostrar solo si es de hoy o ayer
+          if (soloFecha >= ayer) {
+            vencidasRecientes.push(reserva);
+          }
+        } else {
+          // Pendiente (futura o de hoy)
+          pendientes.push(reserva);
+        }
+      }
+    });
+    
+    console.log('Pendientes:', pendientes.length);
+    console.log('Vencidas recientes:', vencidasRecientes.length);
+    console.log('Canceladas recientes:', canceladasRecientes.length);
+
+    // Ordenar pendientes por fecha (más próxima primero)
+    pendientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaA - fechaB;
     });
 
-  const handleCancelar = (reserva: Reserva) => {
+    // Ordenar canceladas y vencidas por fecha (más reciente primero)
+    canceladasRecientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaB - fechaA;
+    });
+
+    vencidasRecientes.sort((a, b) => {
+      const fechaA = parseISODateLocal(a.fecha).getTime();
+      const fechaB = parseISODateLocal(b.fecha).getTime();
+      return fechaB - fechaA;
+    });
+
+    // Combinar: pendientes primero, luego vencidas, luego canceladas
+    const resultado = [...pendientes, ...vencidasRecientes, ...canceladasRecientes];
+    console.log('Total a mostrar:', resultado.length);
+    console.log('=== FIN DEBUG ===');
+    return resultado;
+  }, [reservas, user?.id, justCancelled]);
+
+  const handleCancelar = (reserva: ReservaFE) => {
     setReservaSeleccionada(reserva);
     setShowCancelarDialog(true);
   };
 
-  const confirmarCancelacion = () => {
-    if (reservaSeleccionada) {
-      actualizarReserva(reservaSeleccionada.id, { estado: 'CANCELADA' });
+  const confirmarCancelacion = async () => {
+    if (!reservaSeleccionada) return;
+
+    try {
+      setCancelling(true);
+      
+      // Llamar al endpoint DELETE del backend
+      await api.delete(`/reservations/${reservaSeleccionada.id}`);
+      
+      // Actualizar el estado de la reserva localmente
+      setReservas((prev) =>
+        prev.map((r) =>
+          r.id === reservaSeleccionada.id ? { ...r, estado: 'CANCELADA' as ReservaStatus } : r
+        )
+      );
+
+      // Agregar a justCancelled para que se muestre temporalmente
+      setJustCancelled((prev) => new Set(prev).add(reservaSeleccionada.id));
+      
       setShowCancelarDialog(false);
       setReservaSeleccionada(null);
+    } catch (error) {
+      console.error('Error al cancelar reserva:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`No se pudo cancelar la reserva: ${errorMessage}`);
+    } finally {
+      setCancelling(false);
     }
-  };
-
-  const handleModificar = (reserva: Reserva) => {
-    // Navegar al wizard con datos precargados
-    const params = new URLSearchParams({
-      reservaId: reserva.id,
-      sedeId: reserva.sedeId,
-      fecha: reserva.fecha,
-      ...(reserva.meal && { meal: reserva.meal }),
-      ...(reserva.slotStart && { slotStart: reserva.slotStart }),
-      ...(reserva.slotEnd && { slotEnd: reserva.slotEnd }),
-    });
-    navigate(`/nueva-reserva?${params.toString()}`);
   };
 
   const handleLogout = () => {
@@ -74,26 +241,16 @@ export default function ReservasPage() {
     navigate('/login');
   };
 
-  const getSede = (sedeId: string) => sedes.find((s) => s.id === sedeId);
-  const getTurno = (turnoId?: string) => turnoId ? turnos.find((t) => t.id === turnoId) : null;
-  
   const formatearFecha = (fecha: string) => formatFechaLargaEs(fecha);
 
-  const puedeCancelar = (reserva: Reserva): boolean => {
+  const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
-    
-    // Verificar si la reserva es futura
-    const fechaReserva = parseISODateLocal(reserva.fecha);
+    // Combinar fecha + hora
+    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.hora}`);
     const ahora = new Date();
-    
-    // Si tiene horario específico, verificar
-    if (reserva.slotStart) {
-      const [hours, minutes] = reserva.slotStart.split(':').map(Number);
-      fechaReserva.setHours(hours, minutes, 0, 0);
-    }
-    
-    // Permitir cancelar si la reserva es futura
-    return fechaReserva > ahora;
+    // 2 horas antes en milisegundos
+    const dosHoras = 2 * 60 * 60 * 1000;
+    return fechaHoraReserva.getTime() - ahora.getTime() > dosHoras;
   };
 
   return (
@@ -178,7 +335,19 @@ export default function ReservasPage() {
         </div>
 
         {/* Reservas Grid */}
-        {misReservas.length === 0 ? (
+        {loading ? (
+          <Card className="bg-white border-0 shadow-md">
+            <CardContent className="p-6 sm:p-8 md:p-12 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                  <Clock className="w-8 h-8 md:w-10 md:h-10 text-gray-400" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold mb-2 text-gray-800">Cargando reservas...</h3>
+                <p className="text-sm md:text-base text-gray-500">Por favor espera un momento</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : misReservas.length === 0 ? (
           <Card className="bg-white border-0 shadow-md">
             <CardContent className="p-6 sm:p-8 md:p-12 text-center">
               <div className="flex flex-col items-center justify-center">
@@ -200,8 +369,6 @@ export default function ReservasPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {misReservas.map((reserva) => {
-              const sede = getSede(reserva.sedeId);
-              const turno = getTurno(reserva.turnoId);
               const mostrarBotonCancelar = puedeCancelar(reserva);
               
               return (
@@ -224,8 +391,8 @@ export default function ReservasPage() {
                         <MapPin className="w-4 h-4 text-[#1E3A5F] mt-0.5 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Sede</p>
-                          <p className="text-sm text-gray-700 truncate">{sede?.nombre}</p>
-                          <p className="text-xs text-gray-500 truncate">{sede?.direccion}</p>
+                          <p className="text-sm text-gray-700 truncate">{reserva.sedeName}</p>
+                          <p className="text-xs text-gray-500 truncate">{reserva.sedeAddress}</p>
                         </div>
                       </div>
 
@@ -233,19 +400,8 @@ export default function ReservasPage() {
                         <Clock className="w-4 h-4 text-[#1E3A5F] mt-0.5 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Horario</p>
-                          {reserva.slotStart && reserva.slotEnd ? (
-                            <>
-                              <p className="text-sm text-gray-700">{reserva.meal}</p>
-                              <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
-                            </>
-                          ) : turno ? (
-                            <>
-                              <p className="text-sm text-gray-700">{turno.nombre}</p>
-                              <p className="text-xs text-gray-500">{turno.horaInicio} - {turno.horaFin}</p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-gray-500">Horario no especificado</p>
-                          )}
+                          <p className="text-sm text-gray-700">{reserva.mealTime}</p>
+                          <p className="text-xs text-gray-500">{reserva.hora}</p>
                         </div>
                       </div>
 
@@ -342,6 +498,7 @@ export default function ReservasPage() {
               variant="outline" 
               onClick={() => setShowCancelarDialog(false)}
               className="w-full sm:w-auto"
+              disabled={cancelling}
             >
               No, mantener
             </Button>
@@ -349,8 +506,9 @@ export default function ReservasPage() {
               variant="destructive" 
               onClick={confirmarCancelacion}
               className="w-full sm:w-auto bg-red-500 hover:bg-red-600"
+              disabled={cancelling}
             >
-              Sí, cancelar reserva
+              {cancelling ? 'Cancelando...' : 'Sí, cancelar reserva'}
             </Button>
           </div>
         </DialogContent>
