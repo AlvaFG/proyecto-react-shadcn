@@ -45,6 +45,7 @@ interface ReservaFE {
   mealTime: string; // ALMUERZO, CENA, etc.
   slotStart: string; // HH:MM
   slotEnd: string; // HH:MM
+  reservationTimeSlot?: string;
   estado: ReservaStatus;
   total: number;
   sedeName: string;
@@ -110,13 +111,18 @@ export default function ReservasPage() {
         });
 
         // Mapear reservas del API al formato del frontend
+        const parseApiTime = (t?: string) => {
+          if (!t) return '';
+          const trimmed = t.trim();
+          // Aceptar HH:MM:SS o HH:MM
+          const m = trimmed.match(/^(\d{2}:\d{2})/);
+          return m ? m[1] : '';
+        };
+
         const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
           // Preferir los campos slotStartTime/slotEndTime si el backend los provee.
-          // Se espera formato "HH:MM:SS"; guardamos "HH:MM".
-          let start = '';
-          let end = '';
-          if (r.slotStartTime) start = r.slotStartTime.slice(0, 5);
-          if (r.slotEndTime) end = r.slotEndTime.slice(0, 5);
+          const start = parseApiTime(r.slotStartTime);
+          const end = parseApiTime(r.slotEndTime);
 
           const timeRange = start || end ? { start, end } : getSlotTimeRange(r.reservationTimeSlot);
           const loc = locMap.get(String(r.locationId));
@@ -129,6 +135,7 @@ export default function ReservasPage() {
             mealTime: r.mealTime,
             slotStart: timeRange.start,
             slotEnd: timeRange.end,
+            reservationTimeSlot: r.reservationTimeSlot,
             estado: normalizeStatus(r.status),
             total: r.cost,
             sedeName: r.locationName || loc?.name || 'Sede desconocida',
@@ -255,11 +262,24 @@ export default function ReservasPage() {
   const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
     // Combinar fecha + hora
-    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.slotStart}`);
+    // si no hay slotStart usar el mapeo desde reservationTimeSlot
+    const slotStartForCalc = reserva.slotStart || getSlotTimeRange(reserva.reservationTimeSlot || '').start;
+    const fechaHoraReserva = new Date(`${reserva.fecha}T${slotStartForCalc}`);
     const ahora = new Date();
     // 2 horas antes en milisegundos
     const dosHoras = 2 * 60 * 60 * 1000;
     return fechaHoraReserva.getTime() - ahora.getTime() > dosHoras;
+  };
+
+  const renderHorario = (reserva: ReservaFE) => {
+    if ((reserva.slotStart && reserva.slotStart !== '00:00') || (reserva.slotEnd && reserva.slotEnd !== '00:00')) {
+      const start = reserva.slotStart || '';
+      const end = reserva.slotEnd || '';
+      return `${start}${end ? ' - ' + end : ''}`;
+    }
+    // fallback a reservationTimeSlot si existe
+    if (reserva.reservationTimeSlot) return reserva.reservationTimeSlot;
+    return '—';
   };
 
   return (
@@ -410,7 +430,7 @@ export default function ReservasPage() {
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#1E3A5F]">Horario</p>
                           <p className="text-sm text-gray-700">{reserva.mealTime}</p>
-                          <p className="text-xs text-gray-500">{reserva.slotStart} - {reserva.slotEnd}</p>
+                          <p className="text-xs text-gray-500">{renderHorario(reserva)}</p>
                         </div>
                       </div>
 
