@@ -20,6 +20,8 @@ interface ReservaAPI {
   locationAddress?: string;
   reservationDate: string; // ISO 8601 datetime
   reservationTimeSlot: string; // Ej: "ALMUERZO_SLOT_1"
+  slotStartTime?: string; // Ej: "10:00:00"
+  slotEndTime?: string;   // Ej: "11:00:00"
   mealTime: string; // Ej: "ALMUERZO"
   status: string; // "ACTIVA", "CONFIRMADA", "CANCELADA"
   cost: number;
@@ -108,8 +110,17 @@ export default function ReservasPage() {
         });
 
         // Mapear reservas del API al formato del frontend
+        const parseApiTime = (t?: string) => {
+          if (!t) return '';
+          const trimmed = t.trim();
+          const m = trimmed.match(/^(\d{2}:\d{2})/);
+          return m ? m[1] : '';
+        };
+
         const reservasMapeadas: ReservaFE[] = (reservasData || []).map((r) => {
-          const timeRange = getSlotTimeRange(r.reservationTimeSlot);
+          const start = parseApiTime((r as any).slotStartTime);
+          const end = parseApiTime((r as any).slotEndTime);
+          const timeRange = start || end ? { start, end } : getSlotTimeRange(r.reservationTimeSlot);
           const loc = locMap.get(String(r.locationId));
 
           return {
