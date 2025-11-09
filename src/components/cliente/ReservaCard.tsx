@@ -39,7 +39,14 @@ export default function ReservaCard({ reserva, onVerDetalles, onCancelar }: Rese
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Clock className="w-4 h-4" />
           <span>
-            {turno?.nombre} ({turno?.horaInicio} - {turno?.horaFin})
+            {/** Preferir slotStart/slotEnd de la reserva si existen, sino usar el turno mock */}
+            {(() => {
+              const format = (t?: string) => (t ? t.slice(0, 5) : '');
+              const start = format((reserva as any).slotStart) || format(turno?.horaInicio);
+              const end = format((reserva as any).slotEnd) || format(turno?.horaFin);
+              if (start || end) return `${start}${end ? ' - ' + end : ''}`;
+              return turno?.nombre || 'Horario desconocido';
+            })()}
           </span>
         </div>
         <div className="flex items-center gap-2 text-sm font-semibold text-orange-600">
