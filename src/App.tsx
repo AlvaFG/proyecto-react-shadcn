@@ -135,6 +135,14 @@ function App() {
           }
         />
         <Route
+          path="/cajero/pago/:id"
+          element={
+            <ProtectedRoute allowedRoles={['cajero']}>
+              <PagoPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/cajero/pago-exitoso"
           element={
             <ProtectedRoute allowedRoles={['cajero']}>
