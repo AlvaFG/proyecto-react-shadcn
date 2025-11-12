@@ -58,7 +58,7 @@ export interface ItemPedido {
   cantidad: number;
 }
 
-export type ReservaStatus = 'ACTIVA' | 'FINALIZADA' | 'CANCELADA';
+export type ReservaStatus = 'ACTIVA' | 'CONFIRMADA' | 'FINALIZADA' | 'CANCELADA';
 
 export interface Reserva {
   id: string;
@@ -83,6 +83,7 @@ export interface Reserva {
 // Mapeo de etiquetas para mostrar en UI
 export const RESERVA_STATUS_LABEL: Record<ReservaStatus, string> = {
   ACTIVA: 'Activa',
+  CONFIRMADA: 'Confirmada',
   FINALIZADA: 'Finalizada',
   CANCELADA: 'Cancelada',
 };
@@ -90,6 +91,7 @@ export const RESERVA_STATUS_LABEL: Record<ReservaStatus, string> = {
 // Clases de Tailwind para cada estado (badges)
 export const RESERVA_STATUS_CLASS: Record<ReservaStatus, string> = {
   ACTIVA: 'bg-green-100 text-green-700 hover:bg-green-100',
+  CONFIRMADA: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
   FINALIZADA: 'bg-sky-100 text-sky-700 hover:bg-sky-100',
   CANCELADA: 'bg-red-100 text-red-700 hover:bg-red-100',
 };

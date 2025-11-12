@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from '../../components/ui/badge';
 import { useAuthStore } from '../../lib/store';
 import { MapPin, Clock, AlertTriangle, Plus, ArrowLeft, User, LogOut } from 'lucide-react';
-import { parseISODateLocal, formatFechaLargaEs } from '../../lib/date';
+import { formatFechaLargaEs } from '../../lib/date';
 import type { ReservaStatus } from '../../types';
 import { RESERVA_STATUS_LABEL, RESERVA_STATUS_CLASS } from '../../types';
 import { api } from '@/lib/http';
@@ -74,9 +74,11 @@ const getSlotTimeRange = (slotName: string): { start: string; end: string } => {
 // Función para normalizar el estado del backend al frontend
 const normalizeStatus = (status: string): ReservaStatus => {
   const normalized = status.toUpperCase();
-  if (normalized === 'ACTIVA' || normalized === 'CONFIRMADA') return 'ACTIVA';
+  if (normalized === 'ACTIVA') return 'ACTIVA';
+  if (normalized === 'CONFIRMADA') return 'CONFIRMADA';
   if (normalized === 'CANCELADA') return 'CANCELADA';
-  return 'FINALIZADA';
+  if (normalized === 'AUSENTE') return 'FINALIZADA';
+  return 'ACTIVA'; // default
 };
 
 export default function ReservasPage() {
@@ -89,18 +91,21 @@ export default function ReservasPage() {
   const [reservaSeleccionada, setReservaSeleccionada] = useState<ReservaFE | null>(null);
   const [showCancelarDialog, setShowCancelarDialog] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [justCancelled, setJustCancelled] = useState<Set<string>>(new Set());
 
-  // Cargar reservas y sedes
+  // Cargar reservas del usuario desde el backend
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         
+        // TODO: Obtener userId dinámicamente desde el login
+        // Por ahora usamos userId=1 hardcodeado
+        const userId = 1;
+        
         // Cargar locations y reservas en paralelo
         const [locationsData, reservasData] = await Promise.all([
           api.get<LocationAPI[]>('/locations'),
-          api.get<ReservaAPI[]>('/reservations'),
+          api.get<ReservaAPI[]>(`/reservations/mine?userId=${userId}`),
         ]);
 
         // Crear mapa de locations
@@ -138,6 +143,8 @@ export default function ReservasPage() {
           };
         });
 
+        // El backend ya devuelve las reservas ordenadas correctamente
+        // No necesitamos filtrar ni ordenar en el frontend
         setReservas(reservasMapeadas);
       } catch (error) {
         console.error('Error al cargar datos:', error);
@@ -149,68 +156,6 @@ export default function ReservasPage() {
 
     fetchData();
   }, []);
-
-  // Filtrar y ordenar reservas según la lógica especificada
-  const misReservas = useMemo(() => {
-    const ahora = new Date();
-    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-    const ayer = new Date(hoy);
-    ayer.setDate(ayer.getDate() - 1);
-
-    // Filtrar reservas del usuario
-    const reservasDelUsuario = reservas.filter((r) => r.usuarioId === user?.id);
-
-    // Categorizar reservas
-    const pendientes: ReservaFE[] = [];
-    const canceladasRecientes: ReservaFE[] = [];
-    const vencidasRecientes: ReservaFE[] = [];
-
-    reservasDelUsuario.forEach((reserva) => {
-      const fechaReserva = parseISODateLocal(reserva.fecha);
-      const soloFecha = new Date(fechaReserva.getFullYear(), fechaReserva.getMonth(), fechaReserva.getDate());
-
-      if (reserva.estado === 'CANCELADA') {
-        // Mostrar canceladas solo si están en justCancelled (recién canceladas)
-        if (justCancelled.has(reserva.id)) {
-          canceladasRecientes.push(reserva);
-        }
-      } else if (reserva.estado === 'ACTIVA') {
-        // Verificar si la reserva está vencida
-        if (soloFecha < hoy) {
-          // Vencida: mostrar solo si es de hoy o ayer
-          if (soloFecha >= ayer) {
-            vencidasRecientes.push(reserva);
-          }
-        } else {
-          // Pendiente (futura o de hoy)
-          pendientes.push(reserva);
-        }
-      }
-    });
-
-    // Ordenar pendientes por fecha (más próxima primero)
-    pendientes.sort((a, b) => {
-      const fechaA = parseISODateLocal(a.fecha).getTime();
-      const fechaB = parseISODateLocal(b.fecha).getTime();
-      return fechaA - fechaB;
-    });
-
-    // Ordenar canceladas y vencidas por fecha (más reciente primero)
-    canceladasRecientes.sort((a, b) => {
-      const fechaA = parseISODateLocal(a.fecha).getTime();
-      const fechaB = parseISODateLocal(b.fecha).getTime();
-      return fechaB - fechaA;
-    });
-
-    vencidasRecientes.sort((a, b) => {
-      const fechaA = parseISODateLocal(a.fecha).getTime();
-      const fechaB = parseISODateLocal(b.fecha).getTime();
-      return fechaB - fechaA;
-    });
-
-    // Combinar: pendientes primero, luego vencidas, luego canceladas
-    return [...pendientes, ...vencidasRecientes, ...canceladasRecientes];
-  }, [reservas, user?.id, justCancelled]);
 
   const handleCancelar = (reserva: ReservaFE) => {
     setReservaSeleccionada(reserva);
@@ -232,9 +177,6 @@ export default function ReservasPage() {
           r.id === reservaSeleccionada.id ? { ...r, estado: 'CANCELADA' as ReservaStatus } : r
         )
       );
-
-      // Agregar a justCancelled para que se muestre temporalmente
-      setJustCancelled((prev) => new Set(prev).add(reservaSeleccionada.id));
       
       setShowCancelarDialog(false);
       setReservaSeleccionada(null);
@@ -358,7 +300,7 @@ export default function ReservasPage() {
               </div>
             </CardContent>
           </Card>
-        ) : misReservas.length === 0 ? (
+        ) : reservas.length === 0 ? (
           <Card className="bg-white border-0 shadow-md">
             <CardContent className="p-6 sm:p-8 md:p-12 text-center">
               <div className="flex flex-col items-center justify-center">
@@ -379,7 +321,7 @@ export default function ReservasPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {misReservas.map((reserva) => {
+            {reservas.map((reserva) => {
               const mostrarBotonCancelar = puedeCancelar(reserva);
               
               return (
