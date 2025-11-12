@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -8,20 +8,136 @@ import { reservasIniciales } from '../../lib/data/mockData';
 import { COSTO_RESERVA } from '../../lib/config';
 import { ArrowLeft, User, LogOut, Receipt, Banknote, CreditCard, Wallet, Plus } from 'lucide-react';
 import type { Reserva } from '../../types';
+import { api } from '../../lib/http';
+
+const formatPrice = (n: number) => {
+  try {
+    return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(n);
+  } catch (e) {
+    return String(n);
+  }
+};
 
 export default function PagoPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const params = useParams<{ id?: string; cartId?: string }>();
   const { user: cajeroUser, logout } = useAuthStore();
   const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
   
-  const reservaId = location.state?.reservaId;
+  const reservaId = String(location.state?.reservaId || '');
   const [reserva, setReserva] = useState<Reserva | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [reservationDiscount, setReservationDiscount] = useState<number | null>(null);
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
   const [showConfirmPago, setShowConfirmPago] = useState(false);
 
   // ✅ useEffect corregido: ahora toma los items seleccionados desde el state al navegar
   useEffect(() => {
+  const cartIdParam = params.id || params.cartId || null;
+
+    // If route contains a cart id, fetch the cart and populate the reserva from it
+    const fetchFromCart = async (cartId: string) => {
+      setLoading(true);
+      setFetchError(null);
+      try {
+        const cartRes: any = await api.get(`/carts/${cartId}`);
+        // cartRes expected shape: { id, reservationId, items: [{ consumibleId, consumible, cantidad }], total }
+  const reservationIdFromCart = String(cartRes?.reservationId ?? cartRes?.reservaId ?? '');
+  // reservationDiscount may be returned by the backend (e.g. reservationDiscount: 500)
+  const discountFromCart = Number(cartRes?.reservationDiscount ?? cartRes?.reservation_discount ?? cartRes?.reservationDiscountAmount ?? 0);
+  setReservationDiscount(!Number.isNaN(discountFromCart) ? discountFromCart : null);
+
+        const reservaEncontrada: Reserva | undefined =
+          useReservaStore.getState().obtenerReservaPorId(reservationIdFromCart) ||
+          (reservasIniciales.find((r) => String(r.id) === reservationIdFromCart) as Reserva | undefined);
+
+        // Support various backend shapes: items, products, productos, etc.
+        const rawItems: any[] =
+          cartRes?.items ?? cartRes?.products ?? cartRes?.productos ?? cartRes?.productsList ?? [];
+
+        // Normalize items so the UI always receives ItemPedido shape
+        const itemsFromCart = rawItems.map((it: any) => {
+          // If the backend returns a wrapped consumible object, use it; otherwise map common fields
+          const source = it.consumible ?? it.product ?? it;
+
+          const consumibleFromRes = {
+            id: source.id ?? it.consumibleId ?? String(it.id ?? ''),
+            nombre: source.name ?? source.nombre ?? source.title ?? `Item ${it.consumibleId ?? it.id ?? ''}`,
+            precio: Number(source.price ?? source.precio ?? source.productPrice ?? 0),
+            imagen: source.imageUrl ?? source.imagen ?? source.imagenUrl ?? source.imagenUrl ?? '',
+            descripcion: source.description ?? source.descripcion ?? '',
+            tipo: source.productType?.toLowerCase?.() ?? source.tipo ?? 'plato',
+            disponible: source.active ?? source.disponible ?? true,
+          } as any;
+
+          return {
+            consumibleId: it.consumibleId ?? consumibleFromRes.id,
+            consumible: {
+              id: String(consumibleFromRes.id ?? ''),
+              nombre: consumibleFromRes.nombre ?? 'Item',
+              tipo: consumibleFromRes.tipo ?? 'plato',
+              descripcion: consumibleFromRes.descripcion ?? '',
+              precio: Number(consumibleFromRes.precio ?? 0),
+              imagen: consumibleFromRes.imagen ?? '',
+              disponible: consumibleFromRes.disponible ?? true,
+            },
+            cantidad: Number(it.cantidad ?? it.qty ?? it.quantity ?? 1),
+          };
+        });
+
+        // Group items with the same consumible.id into a single line (sum quantities)
+        const groupedItems = itemsFromCart.reduce((acc: any[], it: any) => {
+          const key = String(it.consumible.id);
+          const existingIndex = acc.findIndex((a) => String(a.consumible.id) === key);
+          if (existingIndex >= 0) {
+            acc[existingIndex] = {
+              ...acc[existingIndex],
+              cantidad: Number(acc[existingIndex].cantidad || 0) + Number(it.cantidad || 0),
+            };
+          } else {
+            acc.push({ ...it });
+          }
+          return acc;
+        }, [] as any[]);
+
+        const subtotalFromCart = groupedItems.reduce((s: number, it: any) => s + ((it.consumible?.precio ?? 0) * (it.cantidad ?? 0)), 0);
+
+        if (reservaEncontrada) {
+          setReserva({
+            ...reservaEncontrada,
+            items: groupedItems,
+            total: subtotalFromCart,
+          });
+        } else {
+          // If no reservation found, still show the cart items as a temporary reserva-like object
+          setReserva({
+            id: reservationIdFromCart || `cart-${cartId}`,
+            usuarioId: '',
+            sedeId: '',
+            fecha: new Date().toISOString(),
+            estado: 'ACTIVA',
+            items: groupedItems,
+            total: subtotalFromCart,
+            fechaCreacion: new Date().toISOString(),
+          } as Reserva);
+        }
+      } catch (err: any) {
+        console.warn('Error fetching cart by id:', err);
+        setFetchError(err?.message || String(err));
+        // Do not navigate away; show error in-page so it's visible to the user
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (cartIdParam) {
+      fetchFromCart(cartIdParam);
+      return;
+    }
+
+    // Fallback: existing behavior when navigation used location.state
     if (!reservaId) {
       navigate('/cajero');
       return;
@@ -30,9 +146,9 @@ export default function PagoPage() {
     const itemsFromState = location.state?.items;
     const totalFromState = location.state?.total;
 
-    const reservaEncontrada =
+    const reservaEncontrada: Reserva | undefined =
       useReservaStore.getState().obtenerReservaPorId(reservaId) ||
-      reservasIniciales.find((r) => r.id === reservaId);
+      (reservasIniciales.find((r) => String(r.id) === reservaId) as Reserva | undefined);
 
     if (reservaEncontrada) {
       setReserva({
@@ -41,7 +157,7 @@ export default function PagoPage() {
         total: totalFromState || reservaEncontrada.total || 0,
       });
     }
-  }, [reservaId, navigate, location]);
+  }, [navigate, location, params.id, reservaId]);
 
   const handleLogout = () => {
     logout();
@@ -80,21 +196,46 @@ export default function PagoPage() {
 
   const finalizarCompra = () => {
     if (!reserva) return;
+    // If this page was loaded from a cart id (params.id), call the backend confirmation endpoint
+    const cartId = params.id || params.cartId || null;
 
-    actualizarReserva(reserva.id, {
-      items: reserva.items,
-      total: reserva.total,
-      estado: 'FINALIZADA',
-      metodoPago
-    });
+    const doNavigateSuccess = () => {
+      actualizarReserva(reserva.id, {
+        items: reserva.items,
+        total: reserva.total,
+        estado: 'FINALIZADA',
+        metodoPago
+      });
 
-    navigate('/cajero/pago-exitoso', {
-      state: {
-        reservaId: reserva.id,
-        metodoPago,
-        total: reserva.total
-      }
-    });
+      navigate('/cajero/pago-exitoso', {
+        state: {
+          reservaId: reserva.id,
+          metodoPago,
+          total: reserva.total
+        }
+      });
+    };
+
+    if (cartId) {
+      // call confirmation endpoint
+      (async () => {
+        setLoading(true);
+        setFetchError(null);
+        try {
+          await api.post(`/carts/confirmation/${cartId}`);
+          doNavigateSuccess();
+        } catch (err: any) {
+          console.warn('Error confirming cart:', err);
+          setFetchError(err?.message || String(err));
+        } finally {
+          setLoading(false);
+        }
+      })();
+      return;
+    }
+
+    // Fallback: no cart id available, just finalize locally
+    doNavigateSuccess();
   };
   
   const confirmarCompra = () => {
@@ -109,6 +250,35 @@ export default function PagoPage() {
   };
 
   if (!reserva) {
+    // Show loading / error / not found states
+    if (loading) {
+      return (
+        <div className="min-h-screen bg-[#E8DED4] flex items-center justify-center">
+          <Card className="max-w-md p-8">
+            <h2 className="text-2xl font-bold text-[#1E3A5F] mb-4">Cargando carrito...</h2>
+            <p className="text-sm text-gray-600">Por favor espera mientras cargamos el carrito.</p>
+          </Card>
+        </div>
+      );
+    }
+
+    if (fetchError) {
+      return (
+        <div className="min-h-screen bg-[#E8DED4] flex items-center justify-center">
+          <Card className="max-w-md p-8">
+            <h2 className="text-2xl font-bold text-[#1E3A5F] mb-4">Error al cargar el carrito</h2>
+            <p className="text-sm text-gray-600 mb-4">{fetchError}</p>
+            <Button
+              onClick={() => navigate('/cajero')}
+              className="bg-[#1E3A5F] hover:bg-[#2a5080] text-white"
+            >
+              Volver a buscar
+            </Button>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#E8DED4] flex items-center justify-center">
         <Card className="max-w-md p-8">
@@ -124,9 +294,11 @@ export default function PagoPage() {
     );
   }
 
-  const costoReserva = COSTO_RESERVA;
+  const costoReserva = reservationDiscount !== null ? reservationDiscount : COSTO_RESERVA;
   const subtotal = reserva.total;
   const totalAPagar = subtotal - costoReserva;
+
+  const displayId = params.id || reserva.id;
 
   return (
     <div className="min-h-screen bg-[#E8DED4]">
@@ -144,7 +316,7 @@ export default function PagoPage() {
                 <ArrowLeft className="w-5 h-5 text-[#1E3A5F]" />
               </Button>
               <div>
-                <h1 className="text-xl font-bold text-[#1E3A5F]">Reserva {reserva.id}</h1>
+                <h1 className="text-xl font-bold text-[#1E3A5F]">Carrito {displayId}</h1>
                 <p className="text-sm text-gray-600">Sistema de Cajero</p>
               </div>
             </div>
@@ -168,9 +340,23 @@ export default function PagoPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-6 max-w-4xl">
+        {fetchError && (
+          <div className="mb-4">
+            <Card className="bg-red-50 border border-red-200 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="text-sm text-red-700">{fetchError}</div>
+                <div>
+                  <Button variant="ghost" onClick={() => setFetchError(null)} className="text-red-700">
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-[#1E3A5F]">Detalles de Reserva</h2>
-          <p className="text-gray-600">Encontrado por ID: {reserva.id}</p>
+          <h2 className="text-2xl font-bold text-[#1E3A5F]">Detalles de Carrito</h2>
+          <p className="text-gray-600">Encontrado por ID: {displayId}</p>
         </div>
 
         {/* Pedido */}
@@ -180,44 +366,55 @@ export default function PagoPage() {
             <h3 className="text-xl font-bold text-[#1E3A5F]">Pedido</h3>
           </div>
 
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {reserva.items.map((item) => (
-              <Card key={item.consumible.id} className="bg-white shadow-md overflow-hidden">
-                <div className="relative h-24">
-                  <img
-                    src={item.consumible.imagen}
-                    alt={item.consumible.nombre}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-2 left-2 right-2">
-                    <span className="text-xs font-bold text-[#1E3A5F] bg-white px-2 py-1 rounded-full inline-block shadow">
-                      {item.consumible.nombre}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-3">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      onClick={() => disminuirCantidad(item.consumible.id)}
-                      size="sm"
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white h-8"
-                    >
-                      -
-                    </Button>
-                    <div className="w-10 h-8 flex items-center justify-center bg-gray-100 rounded font-bold text-[#1E3A5F] text-sm">
-                      {item.cantidad}
+            {reserva.items.length === 0 ? (
+              <div className="col-span-2 md:col-span-4">
+                <Card className="bg-white p-6 text-center">
+                  <p className="text-gray-600">No hay productos en el carrito.</p>
+                </Card>
+              </div>
+            ) : (
+              reserva.items.map((item) => (
+                <Card key={item.consumible.id} className="bg-white shadow-md overflow-hidden">
+                  <div className="relative h-36">
+                    <img
+                      src={item.consumible.imagen || '/images/placeholder.png'}
+                      alt={item.consumible.nombre}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 left-2 right-2">
+                      <span className="text-xs font-bold text-[#1E3A5F] bg-white px-2 py-1 rounded-full inline-block shadow">
+                        {item.consumible.nombre}
+                      </span>
                     </div>
-                    <Button
-                      onClick={() => aumentarCantidad(item.consumible.id)}
-                      size="sm"
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white h-8"
-                    >
-                      +
-                    </Button>
                   </div>
-                </div>
-              </Card>
-            ))}
+                  <div className="p-3">
+                    <div className="mb-2 text-sm text-gray-700">{item.consumible.descripcion}</div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => disminuirCantidad(item.consumible.id)}
+                        size="sm"
+                        className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 flex items-center justify-center"
+                      >
+                        -
+                      </Button>
+                      <div className="w-10 h-8 flex items-center justify-center bg-gray-100 rounded font-bold text-[#1E3A5F] text-sm">
+                        {item.cantidad}
+                      </div>
+                      <Button
+                        onClick={() => aumentarCantidad(item.consumible.id)}
+                        size="sm"
+                        className="bg-green-500 hover:bg-green-600 text-white h-8 w-8 flex items-center justify-center"
+                      >
+                        +
+                      </Button>
+                      <div className="ml-auto font-semibold text-[#1E3A5F]">$ {formatPrice(item.consumible.precio * item.cantidad)}</div>
+                    </div>
+                  </div>
+                </Card>
+              ))
+            )}
 
             {/* Agregar más */}
             <Card
@@ -244,7 +441,7 @@ export default function PagoPage() {
                   {item.consumible.nombre} {item.cantidad > 1 && `x${item.cantidad}`}
                 </span>
                 <span className="font-semibold text-gray-900">
-                  $ {(item.consumible.precio * item.cantidad).toFixed(3)}
+                  $ {formatPrice(item.consumible.precio * item.cantidad)}
                 </span>
               </div>
             ))}
@@ -333,6 +530,14 @@ export default function PagoPage() {
               </DialogDescription>
             </DialogHeader>
 
+            {fetchError && (
+              <div className="mb-3">
+                <Card className="bg-red-50 border border-red-200 p-3">
+                  <div className="text-sm text-red-700">{fetchError}</div>
+                </Card>
+              </div>
+            )}
+
             <div className="mt-2 p-3 bg-gray-50 rounded text-sm flex justify-between">
               <span className="text-gray-700">Total a confirmar</span>
               <span className="font-semibold text-gray-900">$ {totalAPagar.toFixed(0)}</span>
@@ -342,7 +547,7 @@ export default function PagoPage() {
               <Button variant="outline" onClick={() => setShowConfirmPago(false)}>
                 Cancelar
               </Button>
-              <Button className="bg-[#1E3A5F] hover:bg-[#2a5080]" onClick={finalizarCompra}>
+              <Button className="bg-[#1E3A5F] hover:bg-[#2a5080]" onClick={finalizarCompra} disabled={loading}>
                 Confirmar pago
               </Button>
             </DialogFooter>

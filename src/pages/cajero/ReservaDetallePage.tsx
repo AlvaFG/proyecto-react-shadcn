@@ -4,7 +4,9 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { useAuthStore, useReservaStore } from '../../lib/store';
-import { reservasIniciales, sedes, consumibles, usuarios } from '../../lib/data/mockData';
+import { api } from '../../lib/http';
+import { reservasIniciales, sedes, usuarios } from '../../lib/data/mockData';
+import { RESERVA_STATUS_LABEL } from '../../types';
 import { ArrowLeft, User, LogOut, Calendar, Utensils, Wine, Cake, ShoppingCart } from 'lucide-react';
 import type { Reserva, Consumible } from '../../types';
 
@@ -21,17 +23,122 @@ export default function ReservaDetallePage() {
 
   const [reserva, setReserva] = useState<Reserva | null>(null);
   const [carrito, setCarrito] = useState<CartItem[]>([]);
+  const [loadingReserva, setLoadingReserva] = useState(false);
 
-useEffect(() => {
+  // (menu desde backend removido — usamos los mocks `consumibles` directamente)
+
+  
+
+  // menú desde backend: estados locales (se cargarán desde /menus/now cuando tengamos la reserva)
+  const [menuPlatos, setMenuPlatos] = useState<Consumible[]>([]);
+  const [menuBebidas, setMenuBebidas] = useState<Consumible[]>([]);
+  const [menuPostres, setMenuPostres] = useState<Consumible[]>([]);
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [menuAvailable, setMenuAvailable] = useState(false);
+  const [sendingCart, setSendingCart] = useState(false);
+
+  useEffect(() => {
   const reservaEncontrada =
     useReservaStore.getState().obtenerReservaPorId(id || '') ||
     reservasIniciales.find((r) => r.id === id);
 
   if (reservaEncontrada) {
     setReserva(reservaEncontrada);
-    setCarrito([]); // 👈 el cajero empieza con el carrito vacío
+    setCarrito([]); // el cajero empieza con el carrito vacío
+    return;
   }
+
+  // Si no está en el store/local, intentar obtenerla desde el backend
+  const fetchReserva = async () => {
+    if (!id) return;
+    setLoadingReserva(true);
+    try {
+      // endpoint: /reservations/byreservationId/:id
+      const apiRes: any = await api.get(`/reservations/byreservationId/${id}`);
+
+      // mapear respuesta del backend al shape usado en la UI
+      const mapped: any = {
+        id: String(apiRes.id ?? apiRes.reservationId ?? id),
+        usuarioId: String(apiRes.userId ?? apiRes.usuarioId ?? apiRes.user?.id ?? ''),
+        sedeId: String(apiRes.locationId ?? apiRes.sedeId ?? ''),
+        fecha: apiRes.reservationDate ?? apiRes.date ?? apiRes.fecha ?? '',
+        estado: (apiRes.status ?? apiRes.estado ?? 'ACTIVA') as any,
+        items: apiRes.items ?? [],
+        total: apiRes.cost ?? apiRes.total ?? 0,
+        fechaCreacion: apiRes.createdAt ?? apiRes.fechaCreacion ?? '',
+        meal: apiRes.mealTime ?? apiRes.meal ?? undefined,
+        slotId: apiRes.reservationTimeSlot ?? apiRes.slotId ?? undefined,
+        slotStart: apiRes.slotStartTime ?? apiRes.slotStart ?? undefined,
+        slotEnd: apiRes.slotEndTime ?? apiRes.slotEnd ?? undefined,
+      };
+
+      setReserva(mapped as any);
+      setCarrito([]);
+    } catch (err) {
+      // Si falla la petición, dejamos reserva en null (se mostrará 'Reserva no encontrada')
+      console.error('Error fetching reserva by id:', err);
+    }
+    finally {
+      setLoadingReserva(false);
+    }
+  };
+
+  fetchReserva();
 }, [id]);
+
+  // cuando tengamos la reserva, intentamos obtener el menú correspondiente (si existe)
+  useEffect(() => {
+    if (!reserva) return;
+    let canceled = false;
+    const fetchMenu = async () => {
+      setMenuLoaded(false);
+      try {
+        const apiRes: any = await api.get('/menus/now');
+
+        if (!apiRes || !Array.isArray(apiRes.meals) || apiRes.meals.length === 0) {
+          setMenuAvailable(false);
+          return;
+        }
+
+        const desired = String(reserva.meal || '').toLowerCase();
+        let mealMatch = apiRes.meals.find((m: any) => String(m.mealTime || m.meal || '').toLowerCase() === desired);
+        if (!mealMatch) mealMatch = apiRes.meals[0];
+
+        if (mealMatch && mealMatch.sections) {
+          const mapItem = (it: any): Consumible => ({
+            id: String(it.id),
+            nombre: it.name || it.nombre || '',
+            tipo: String(it.productType || '').toLowerCase() === 'plato' ? 'plato' : String(it.productType || '').toLowerCase() === 'bebida' ? 'bebida' : 'postre',
+            descripcion: it.description || it.descripcion || '',
+            precio: it.price ?? it.precio ?? 0,
+            imagen: it.imageUrl || it.imagen || undefined,
+            disponible: true,
+          });
+
+          const platosFromApi = (mealMatch.sections.platos || []).map(mapItem);
+          const bebidasFromApi = (mealMatch.sections.bebidas || []).map(mapItem);
+          const postresFromApi = (mealMatch.sections.postres || []).map(mapItem);
+
+          if (!canceled) {
+            setMenuPlatos(platosFromApi);
+            setMenuBebidas(bebidasFromApi);
+            setMenuPostres(postresFromApi);
+            setMenuAvailable(platosFromApi.length > 0 || bebidasFromApi.length > 0 || postresFromApi.length > 0);
+          }
+        } else {
+          setMenuAvailable(false);
+        }
+      } catch (err) {
+        console.warn('Error fetching /menus/now', err);
+        setMenuAvailable(false);
+      } finally {
+        if (!canceled) setMenuLoaded(true);
+      }
+    };
+
+    fetchMenu();
+    return () => { canceled = true; };
+  }, [reserva]);
 
   const handleLogout = () => {
     logout();
@@ -69,31 +176,94 @@ useEffect(() => {
     return item ? item.cantidad : 0;
   };
 
- const confirmarCarrito = () => {
-   if (!reserva) return;
+  const confirmarCarrito = async () => {
+    if (!reserva) return;
 
-   const total = carrito.reduce((sum, item) => sum + (item.consumible.precio * item.cantidad), 0);
+    setSendingCart(true);
+    try {
+      // enviar el carrito ensamblado al backend en una sola llamada
+      const cartRes: any = await sendCarritoToApi(carrito);
 
-   const items = carrito.map(item => ({
-     consumibleId: item.consumible.id,
-     consumible: item.consumible,
-     cantidad: item.cantidad
-   }));
+      // si el backend devolvió el id del carrito, navegamos a /cajero/pago/{cartId}
+      const cartId = cartRes?.id ?? cartRes?.cartId ?? cartRes?.data?.id;
+      if (cartId) {
+        // navegamos a la ruta que cargará el carrito desde el backend
+        navigate(`/cajero/pago/${String(cartId)}`);
+        return;
+      }
 
-   // ✅ Actualizamos en el store
-   actualizarReserva(reserva.id, { items, total });
+      // Si no devolvió id, mantenemos el comportamiento anterior (navegar con reserva)
+    } catch (err) {
+      console.warn('Error al enviar carrito antes de confirmar:', err);
+    } finally {
+      setSendingCart(false);
+    }
 
-   // ✅ Pasamos también los ítems por "state" al navegar
-   navigate('/cajero/pago', {
-     state: {
-       reservaId: reserva.id,
-       items,
-       total
-     }
-   });
- };
+    const total = carrito.reduce((sum, item) => sum + (item.consumible.precio * item.cantidad), 0);
+
+    const items = carrito.map(item => ({
+      consumibleId: item.consumible.id,
+      consumible: item.consumible,
+      cantidad: item.cantidad
+    }));
+
+    // ✅ Actualizamos en el store
+    actualizarReserva(reserva.id, { items, total });
+
+    // ✅ Pasamos también los ítems por "state" al navegar (fallback)
+    navigate('/cajero/pago', {
+      state: {
+        reservaId: String(reserva.id),
+        items,
+        total
+      }
+    });
+  };
+
+  // Helper: convierte el estado `carrito` en un array de product IDs repetidos según cantidad
+  const expandCartToIds = (cart: CartItem[]) => {
+    const ids: Array<number | string> = [];
+    for (const it of cart) {
+      const times = it.cantidad || 0;
+      for (let i = 0; i < times; i++) {
+        // intentar parsear a número si corresponde
+        const maybeNum = Number(it.consumible.id);
+        ids.push(Number.isNaN(maybeNum) ? it.consumible.id : maybeNum);
+      }
+    }
+    return ids;
+  };
+
+  // Helper: enviar POST /carts con el formato requerido
+  const sendCarritoToApi = async (cartState: CartItem[]) => {
+    if (!reserva) return; // necesitamos reservationId
+    try {
+      const payload = {
+        paymentMethod: 'EFECTIVO',
+        cart: expandCartToIds(cartState),
+        reservationId: Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id),
+      } as any;
+      const res = await api.post('/carts', payload);
+      // devolver la respuesta para que el llamador pueda navegar al carrito creado
+      return res;
+    } catch (err) {
+      console.warn('Error creating cart on backend', err);
+      throw err;
+    }
+  };
 
   if (!reserva) {
+    if (loadingReserva) {
+      return (
+        <div className="min-h-screen bg-[#E8DED4] flex items-center justify-center">
+          <Card className="max-w-md p-8 text-center">
+            <h2 className="text-2xl font-bold text-[#1E3A5F] mb-4">Cargando reserva...</h2>
+            <p className="text-gray-600">Por favor espera mientras verificamos la reserva.</p>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#E8DED4] flex items-center justify-center">
         <Card className="max-w-md p-8">
@@ -112,12 +282,37 @@ useEffect(() => {
     );
   }
 
-  const cliente = usuarios.find(u => u.id === reserva.usuarioId);
   const sede = sedes.find((s) => s.id === reserva.sedeId);
+  const cliente = usuarios.find(u => u.id === reserva.usuarioId);
 
-  const platos = consumibles.filter(c => c.tipo === 'plato');
-  const bebidas = consumibles.filter(c => c.tipo === 'bebida');
-  const postres = consumibles.filter(c => c.tipo === 'postre');
+  // Helpers para formateo
+  const formatDateLong = (iso?: string) => {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch (e) {
+      return iso;
+    }
+  };
+
+  const fmtTime = (t?: string) => (t ? t.slice(0,5) : '-');
+
+  const getHorarioText = (r: Reserva) => {
+    if (r.slotStart && r.slotEnd) return `${fmtTime(r.slotStart)} - ${fmtTime(r.slotEnd)}`;
+    if (r.turno && r.turno.horaInicio && r.turno.horaFin) return `${fmtTime(r.turno.horaInicio)} - ${fmtTime(r.turno.horaFin)}`;
+    return '-';
+  };
+
+  // menú: usamos sólo el menú remoto. Si no hay menú disponible, los arrays quedan vacíos
+  const platos = menuPlatos;
+  const bebidas = menuBebidas;
+  const postres = menuPostres;
 
   return (
     <div className="min-h-screen bg-[#E8DED4]">
@@ -189,7 +384,11 @@ useEffect(() => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Email</p>
-                <p className="font-semibold text-gray-900">{cliente?.email || 'juan.perez@email.com'}</p>
+                <p className="font-semibold text-gray-900">{cliente?.email || 'cliente@test.com'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">ID de Cliente</p>
+                <p className="font-semibold text-gray-900">{reserva.usuarioId || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Estado de Reserva</p>
@@ -198,8 +397,7 @@ useEffect(() => {
                   reserva.estado === 'ACTIVA' ? 'bg-blue-100 text-blue-800' :
                   'bg-yellow-100 text-yellow-800'
                 }>
-                  {reserva.estado === 'FINALIZADA' ? 'Finalizada' :
-                   reserva.estado === 'ACTIVA' ? 'Activa' : 'Cancelada'}
+                  {RESERVA_STATUS_LABEL[reserva.estado] || reserva.estado}
                 </Badge>
               </div>
             </div>
@@ -214,20 +412,18 @@ useEffect(() => {
             <div className="space-y-3">
               <div>
                 <p className="text-sm text-gray-600">Fecha</p>
-                <p className="font-semibold text-gray-900">
-                  Sábado, 14 de diciembre de 2024
-                </p>
+                <p className="font-semibold text-gray-900">{formatDateLong(reserva.fecha)}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Turno</p>
                 <p className="font-semibold text-gray-900">
-                  Almuerzo (12:00 - 15:00)
+                  {reserva.meal ? `${reserva.meal} (${getHorarioText(reserva)})` : getHorarioText(reserva)}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Sede</p>
-                <p className="font-semibold text-gray-900">{sede?.nombre || 'Sede Centro'}</p>
-                <p className="text-sm text-gray-600">{sede?.direccion || 'Calle Principal 123'}</p>
+                <p className="font-semibold text-gray-900">{sede?.nombre || 'Sede'}</p>
+                <p className="text-sm text-gray-600">{sede?.direccion || ''}</p>
               </div>
             </div>
           </Card>
@@ -239,6 +435,11 @@ useEffect(() => {
             <Utensils className="w-6 h-6 text-[#1E3A5F]" />
             <h3 className="text-2xl font-bold text-[#1E3A5F]">Plato</h3>
           </div>
+          {menuLoaded && !menuAvailable && (
+            <div className="mb-4">
+              <Badge className="bg-yellow-100 text-yellow-800">No hay menú disponible</Badge>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {platos.map((plato) => {
               const cantidad = getCantidadEnCarrito(plato.id);
@@ -300,6 +501,11 @@ useEffect(() => {
             <Wine className="w-6 h-6 text-[#1E3A5F]" />
             <h3 className="text-2xl font-bold text-[#1E3A5F]">Bebida</h3>
           </div>
+          {menuLoaded && !menuAvailable && (
+            <div className="mb-4">
+              <Badge className="bg-yellow-100 text-yellow-800">No hay menú disponible</Badge>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {bebidas.map((bebida) => {
               const cantidad = getCantidadEnCarrito(bebida.id);
@@ -361,6 +567,11 @@ useEffect(() => {
             <Cake className="w-6 h-6 text-[#1E3A5F]" />
             <h3 className="text-2xl font-bold text-[#1E3A5F]">Postre</h3>
           </div>
+          {menuLoaded && !menuAvailable && (
+            <div className="mb-4">
+              <Badge className="bg-yellow-100 text-yellow-800">No hay menú disponible</Badge>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {postres.map((postre) => {
               const cantidad = getCantidadEnCarrito(postre.id);
@@ -420,12 +631,12 @@ useEffect(() => {
         <div className="flex justify-center">
           <Button
             onClick={confirmarCarrito}
-            disabled={carrito.length === 0}
+            disabled={carrito.length === 0 || sendingCart}
             size="lg"
             className="bg-[#1E3A5F] hover:bg-[#2a5080] text-white px-12 py-6 text-lg"
           >
             <ShoppingCart className="w-5 h-5 mr-2" />
-            Confirmar Carrito {carrito.length > 0 && `(${carrito.length} items)`}
+            {sendingCart ? 'Enviando...' : `Confirmar Carrito ${carrito.length > 0 ? `(${carrito.length} items)` : ''}`}
           </Button>
         </div>
       </main>

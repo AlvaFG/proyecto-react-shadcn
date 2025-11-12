@@ -14,9 +14,11 @@ export default function CajeroPage() {
 
   const handleBuscar = (e: React.FormEvent) => {
     e.preventDefault();
-    if (reservaId.trim()) {
-      navigate(`/cajero/reserva/${reservaId.trim()}`);
-    }
+    const idTrim = reservaId.trim();
+    if (!idTrim) return;
+    // Navegamos directamente a la página de detalle. La página de detalle
+    // intentará obtener la reserva desde el backend usando el id proporcionado.
+    navigate(`/cajero/reserva/${idTrim}`);
   };
 
   const handleLogout = () => {
