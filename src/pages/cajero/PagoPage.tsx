@@ -29,6 +29,8 @@ export default function PagoPage() {
   const [reservationDiscount, setReservationDiscount] = useState<number | null>(null);
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
   const [showConfirmPago, setShowConfirmPago] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false); // Dialog de confirmación de cancelación
+  const [cartIdState, setCartIdState] = useState<string | null>(null); // ID del carrito actual
 
   // ✅ useEffect corregido: ahora toma los items seleccionados desde el state al navegar
   useEffect(() => {
@@ -39,6 +41,7 @@ export default function PagoPage() {
       setLoading(true);
       setFetchError(null);
       try {
+        setCartIdState(cartId); // Guardar el ID del carrito
         const cartRes: any = await api.get(`/carts/${cartId}`);
         // cartRes expected shape: { id, reservationId, items: [{ consumibleId, consumible, cantidad }], total }
   const reservationIdFromCart = String(cartRes?.reservationId ?? cartRes?.reservaId ?? '');
@@ -182,42 +185,90 @@ export default function PagoPage() {
     setReserva({ ...reserva, items: nuevoItems, total: nuevoTotal });
   };
 
-  const finalizarCompra = () => {
+  const finalizarCompra = async () => {
     if (!reserva) return;
-    // If this page was loaded from a cart id (params.id), call the backend confirmation endpoint
-    const cartId = params.id || params.cartId || null;
+    
+    const cartId = cartIdState || params.id || params.cartId || null;
 
-    const doNavigateSuccess = () => {
-      // Ya no actualizamos el store local - solo navegamos
+    if (!cartId) {
+      setFetchError('No se encontró ID del carrito para confirmar');
+      return;
+    }
+
+    setLoading(true);
+    setFetchError(null);
+    
+    try {
+      // Llamar al endpoint de confirmación
+      await api.post(`/carts/confirmation/${cartId}`);
+      
+      // Navegar a página de éxito
       navigate('/cajero/pago-exitoso', {
         state: {
           reservaId: reserva.id,
           metodoPago,
-          total: reserva.total
+          total: reserva.total,
+          cartId
         }
       });
-    };
+    } catch (err: any) {
+      console.error('Error confirming cart:', err);
+      const errorMsg = err?.response?.data?.message || err?.message || 'Error al confirmar el carrito';
+      setFetchError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    if (cartId) {
-      // call confirmation endpoint
-      (async () => {
-        setLoading(true);
-        setFetchError(null);
-        try {
-          await api.post(`/carts/confirmation/${cartId}`);
-          doNavigateSuccess();
-        } catch (err: any) {
-          console.warn('Error confirming cart:', err);
-          setFetchError(err?.message || String(err));
-        } finally {
-          setLoading(false);
-        }
-      })();
+  const cancelarCarrito = async () => {
+    const cartId = cartIdState || params.id || params.cartId || null;
+
+    if (!cartId) {
+      alert('No se encontró ID del carrito para cancelar');
       return;
     }
 
-    // Fallback: no cart id available, just finalize locally
-    doNavigateSuccess();
+    setLoading(true);
+    
+    try {
+      // Llamar DELETE /carts/{id}
+      await api.delete(`/carts/${cartId}`);
+      
+      // Navegar de vuelta al cajero principal
+      navigate('/cajero', {
+        state: {
+          message: 'Carrito cancelado exitosamente'
+        }
+      });
+    } catch (err: any) {
+      console.error('Error canceling cart:', err);
+      const errorMsg = err?.response?.data?.message || err?.message || 'Error al cancelar el carrito';
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
+      setShowCancelDialog(false);
+    }
+  };
+
+  const agregarMasProductos = () => {
+    if (!reserva) return;
+    
+    const cartId = cartIdState || params.id || params.cartId || null;
+    
+    // Convertir items a CartItem format
+    const carritoItems = reserva.items.map(item => ({
+      consumible: item.consumible,
+      cantidad: item.cantidad
+    }));
+
+    // Navegar de vuelta a ReservaDetallePage con el carrito actual
+    navigate(`/cajero/reserva/${reserva.id}`, {
+      state: {
+        cartId: cartId,
+        carrito: carritoItems,
+        metodoPago: metodoPago.toUpperCase()
+      }
+    });
   };
   
   const confirmarCompra = () => {
@@ -402,7 +453,7 @@ export default function PagoPage() {
             {/* Agregar más */}
             <Card
               className="bg-white shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => navigate(`/cajero/reserva/${reserva.id}`)}
+              onClick={agregarMasProductos}
             >
               <div className="h-full flex items-center justify-center p-6">
                 <div className="text-center">
@@ -492,16 +543,53 @@ export default function PagoPage() {
           </div>
         </Card>
 
-        {/* Confirmar Compra */}
-        <div className="flex justify-center">
+        {/* Botones de acción */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Cancelar Carrito */}
+          <Button 
+            onClick={() => setShowCancelDialog(true)}
+            size="lg"
+            variant="outline"
+            className="border-red-500 text-red-500 hover:bg-red-50 px-12 py-6 text-lg"
+          >
+            Cancelar Carrito
+          </Button>
+          
+          {/* Confirmar Compra */}
           <Button 
             onClick={confirmarCompra}
             size="lg"
-            className="w-full bg-[#1E3A5F] hover:bg-[#2a5080] text-white px-12 py-6 text-lg"
+            className="bg-[#1E3A5F] hover:bg-[#2a5080] text-white px-12 py-6 text-lg"
+            disabled={loading}
           >
             Confirmar Compra
           </Button>
         </div>
+
+        {/* Dialog de confirmación de cancelación */}
+        <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>¿Cancelar carrito?</DialogTitle>
+              <DialogDescription>
+                Esta acción cancelará el carrito completo. Los productos seleccionados se perderán.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+                No, volver
+              </Button>
+              <Button 
+                className="bg-red-500 hover:bg-red-600" 
+                onClick={cancelarCarrito}
+                disabled={loading}
+              >
+                Sí, cancelar carrito
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Confirmación de pago para Efectivo/Transferencia */}
         <Dialog open={showConfirmPago} onOpenChange={setShowConfirmPago}>

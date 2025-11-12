@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -28,6 +28,7 @@ interface ClienteData {
 
 export default function ReservaDetallePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const { user: cajeroUser, logout } = useAuthStore();
 
@@ -36,6 +37,8 @@ export default function ReservaDetallePage() {
   const [loadingReserva, setLoadingReserva] = useState(false);
   const [sede, setSede] = useState<LocationData | null>(null);
   const [cliente, setCliente] = useState<ClienteData | null>(null);
+  const [cartId, setCartId] = useState<string | null>(null); // ID del carrito existente
+  const [metodoPago, setMetodoPago] = useState<'EFECTIVO' | 'TRANSFERENCIA' | 'SALDOCUENTA'>('EFECTIVO');
 
   // (menu desde backend removido — usamos los mocks `consumibles` directamente)
 
@@ -98,6 +101,24 @@ export default function ReservaDetallePage() {
 
     fetchReserva();
   }, [id, navigate]);
+
+  // Cargar carrito existente si venimos desde PagoPage con "Agregar más"
+  useEffect(() => {
+    const stateCartId = (location.state as any)?.cartId;
+    const stateCarrito = (location.state as any)?.carrito;
+    const stateMetodoPago = (location.state as any)?.metodoPago;
+
+    if (stateCartId) {
+      setCartId(stateCartId);
+      // Cargar los productos del carrito existente
+      if (stateCarrito && Array.isArray(stateCarrito)) {
+        setCarrito(stateCarrito);
+      }
+      if (stateMetodoPago) {
+        setMetodoPago(stateMetodoPago);
+      }
+    }
+  }, [location.state]);
 
   // cuando tengamos la reserva, intentamos obtener el menú correspondiente (si existe)
   useEffect(() => {
@@ -225,44 +246,37 @@ export default function ReservaDetallePage() {
   };
 
   const confirmarCarrito = async () => {
-    if (!reserva) return;
+    if (!reserva || carrito.length === 0) return;
 
     setSendingCart(true);
     try {
-      // enviar el carrito ensamblado al backend en una sola llamada
-      const cartRes: any = await sendCarritoToApi(carrito);
+      let resultCartId: string;
 
-      // si el backend devolvió el id del carrito, navegamos a /cajero/pago/{cartId}
-      const cartId = cartRes?.id ?? cartRes?.cartId ?? cartRes?.data?.id;
       if (cartId) {
-        // navegamos a la ruta que cargará el carrito desde el backend
-        navigate(`/cajero/pago/${String(cartId)}`);
+        // Actualizar carrito existente con PUT
+        const updateRes: any = await updateCarritoApi(cartId, carrito, metodoPago);
+        resultCartId = updateRes?.id ?? updateRes?.cartId ?? cartId;
+      } else {
+        // Crear nuevo carrito con POST
+        const createRes: any = await createCarritoApi(carrito, metodoPago);
+        resultCartId = createRes?.id ?? createRes?.cartId ?? createRes?.data?.id;
+      }
+
+      if (resultCartId) {
+        // Navegamos a la pantalla de pago con el cartId
+        navigate(`/cajero/pago/${String(resultCartId)}`);
         return;
       }
 
-      // Si no devolvió id, mantenemos el comportamiento anterior (navegar con reserva)
-    } catch (err) {
-      console.warn('Error al enviar carrito antes de confirmar:', err);
+      // Si no devolvió id, mostrar error
+      throw new Error('No se recibió ID del carrito desde el backend');
+    } catch (err: any) {
+      console.error('Error al gestionar carrito:', err);
+      // Mostrar error al usuario (podrías agregar un estado para el error)
+      alert(err?.response?.data?.message || err?.message || 'Error al procesar el carrito');
     } finally {
       setSendingCart(false);
     }
-
-    const total = carrito.reduce((sum, item) => sum + (item.consumible.precio * item.cantidad), 0);
-
-    const items = carrito.map(item => ({
-      consumibleId: item.consumible.id,
-      consumible: item.consumible,
-      cantidad: item.cantidad
-    }));
-
-    // Pasamos los ítems por "state" al navegar (fallback si falla el backend)
-    navigate('/cajero/pago', {
-      state: {
-        reservaId: String(reserva.id),
-        items,
-        total
-      }
-    });
   };
 
   // Helper: convierte el estado `carrito` en un array de product IDs repetidos según cantidad
@@ -279,22 +293,32 @@ export default function ReservaDetallePage() {
     return ids;
   };
 
-  // Helper: enviar POST /carts con el formato requerido
-  const sendCarritoToApi = async (cartState: CartItem[]) => {
-    if (!reserva) return; // necesitamos reservationId
-    try {
-      const payload = {
-        paymentMethod: 'EFECTIVO',
-        cart: expandCartToIds(cartState),
-        reservationId: Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id),
-      } as any;
-      const res = await api.post('/carts', payload);
-      // devolver la respuesta para que el llamador pueda navegar al carrito creado
-      return res;
-    } catch (err) {
-      console.warn('Error creating cart on backend', err);
-      throw err;
-    }
+  // Helper: crear nuevo carrito - POST /carts
+  const createCarritoApi = async (cartState: CartItem[], paymentMethod: string) => {
+    if (!reserva) throw new Error('No hay reserva');
+    
+    const payload = {
+      paymentMethod: paymentMethod,
+      cart: expandCartToIds(cartState),
+      reservationId: Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id),
+    };
+    
+    const res = await api.post('/carts', payload);
+    return res;
+  };
+
+  // Helper: actualizar carrito existente - PUT /carts/{id}
+  const updateCarritoApi = async (id: string, cartState: CartItem[], paymentMethod: string) => {
+    if (!reserva) throw new Error('No hay reserva');
+    
+    const payload = {
+      paymentMethod: paymentMethod,
+      cart: expandCartToIds(cartState),
+      reservationId: Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id),
+    };
+    
+    const res = await api.put(`/carts/${id}`, payload);
+    return res;
   };
 
   if (!reserva) {
