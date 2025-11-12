@@ -1,24 +1,48 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { FileText, User, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
 
 export default function CajeroPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
   const [reservaId, setReservaId] = useState('');
+  const [errorDialog, setErrorDialog] = useState<{ show: boolean; message: string }>({
+    show: false,
+    message: ''
+  });
+
+  // Escuchar errores desde navegación (ej: ReservaDetallePage)
+  useEffect(() => {
+    if (location.state && (location.state as any).error) {
+      const errorState = location.state as any;
+      setErrorDialog({
+        show: true,
+        message: errorState.message || 'Ha ocurrido un error al buscar la reserva.'
+      });
+      // Limpiar el state de navegación
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate, location.pathname]);
 
   const handleBuscar = (e: React.FormEvent) => {
     e.preventDefault();
     const idTrim = reservaId.trim();
     if (!idTrim) return;
+    
+    // Normalizar ID: remover ceros a la izquierda
+    // Si escribe "00102", el ID será "102"
+    const normalizedId = idTrim.replace(/^0+/, '') || '0';
+    
     // Navegamos directamente a la página de detalle. La página de detalle
     // intentará obtener la reserva desde el backend usando el id proporcionado.
-    navigate(`/cajero/reserva/${idTrim}`);
+    navigate(`/cajero/reserva/${normalizedId}`);
   };
 
   const handleLogout = () => {
@@ -83,7 +107,7 @@ export default function CajeroPage() {
                   <Input
                     id="reservaId"
                     type="text"
-                    placeholder="Ej: R001, R002..."
+                    placeholder="Ej: 1, 102, 203..."
                     value={reservaId}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReservaId(e.target.value)}
                     className="h-12 text-base border-gray-300 focus:border-[#1E3A5F] focus:ring-[#1E3A5F]"
@@ -128,6 +152,26 @@ export default function CajeroPage() {
           </div>
         </div>
       </main>
+
+      {/* Dialog de errores */}
+      <Dialog open={errorDialog.show} onOpenChange={(open) => setErrorDialog({ ...errorDialog, show: open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Error al buscar reserva</DialogTitle>
+            <DialogDescription className="text-gray-700">
+              {errorDialog.message}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end mt-4">
+            <Button 
+              onClick={() => setErrorDialog({ show: false, message: '' })}
+              className="bg-[#1E3A5F] hover:bg-[#2a5080]"
+            >
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

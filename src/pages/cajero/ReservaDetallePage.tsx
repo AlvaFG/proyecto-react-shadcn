@@ -3,9 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { useAuthStore, useReservaStore } from '../../lib/store';
+import { useAuthStore } from '../../lib/store';
 import { api } from '../../lib/http';
-import { reservasIniciales, sedes, usuarios } from '../../lib/data/mockData';
 import { RESERVA_STATUS_LABEL } from '../../types';
 import { ArrowLeft, User, LogOut, Calendar, Utensils, Wine, Cake, ShoppingCart } from 'lucide-react';
 import type { Reserva, Consumible } from '../../types';
@@ -15,15 +14,28 @@ interface CartItem {
   cantidad: number;
 }
 
+interface LocationData {
+  id: string;
+  nombre: string;
+  direccion: string;
+}
+
+interface ClienteData {
+  id: string;
+  nombre: string;
+  email: string;
+}
+
 export default function ReservaDetallePage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user: cajeroUser, logout } = useAuthStore();
-  const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
 
   const [reserva, setReserva] = useState<Reserva | null>(null);
   const [carrito, setCarrito] = useState<CartItem[]>([]);
   const [loadingReserva, setLoadingReserva] = useState(false);
+  const [sede, setSede] = useState<LocationData | null>(null);
+  const [cliente, setCliente] = useState<ClienteData | null>(null);
 
   // (menu desde backend removido — usamos los mocks `consumibles` directamente)
 
@@ -38,53 +50,54 @@ export default function ReservaDetallePage() {
   const [sendingCart, setSendingCart] = useState(false);
 
   useEffect(() => {
-  const reservaEncontrada =
-    useReservaStore.getState().obtenerReservaPorId(id || '') ||
-    reservasIniciales.find((r) => r.id === id);
+    // Obtener reserva solo desde el backend
+    const fetchReserva = async () => {
+      if (!id) return;
+      setLoadingReserva(true);
+      try {
+        // endpoint: /reservations/byreservationId/:id
+        const apiRes: any = await api.get(`/reservations/byreservationId/${id}`);
 
-  if (reservaEncontrada) {
-    setReserva(reservaEncontrada);
-    setCarrito([]); // el cajero empieza con el carrito vacío
-    return;
-  }
+        // mapear respuesta del backend al shape usado en la UI
+        const mapped: any = {
+          id: String(apiRes.id ?? apiRes.reservationId ?? id),
+          usuarioId: String(apiRes.userId ?? apiRes.usuarioId ?? apiRes.user?.id ?? ''),
+          sedeId: String(apiRes.locationId ?? apiRes.sedeId ?? ''),
+          fecha: apiRes.reservationDate ?? apiRes.date ?? apiRes.fecha ?? '',
+          estado: (apiRes.status ?? apiRes.estado ?? 'ACTIVA') as any,
+          items: apiRes.items ?? [],
+          total: apiRes.cost ?? apiRes.total ?? 0,
+          fechaCreacion: apiRes.createdAt ?? apiRes.fechaCreacion ?? '',
+          meal: apiRes.mealTime ?? apiRes.meal ?? undefined,
+          slotId: apiRes.reservationTimeSlot ?? apiRes.slotId ?? undefined,
+          slotStart: apiRes.slotStartTime ?? apiRes.slotStart ?? undefined,
+          slotEnd: apiRes.slotEndTime ?? apiRes.slotEnd ?? undefined,
+        };
 
-  // Si no está en el store/local, intentar obtenerla desde el backend
-  const fetchReserva = async () => {
-    if (!id) return;
-    setLoadingReserva(true);
-    try {
-      // endpoint: /reservations/byreservationId/:id
-      const apiRes: any = await api.get(`/reservations/byreservationId/${id}`);
+        setReserva(mapped as any);
+        setCarrito([]);
+      } catch (err: any) {
+        // Si falla la petición, navegar de vuelta al cajero con mensaje de error
+        console.error('Error fetching reserva by id:', err);
+        
+        // Extraer mensaje de error del backend
+        const errorMessage = err?.response?.data?.message 
+          || err?.message 
+          || 'No se pudo cargar la reserva. Verifique el ID e intente nuevamente.';
+        
+        navigate('/cajero', {
+          state: {
+            error: true,
+            message: errorMessage
+          }
+        });
+      } finally {
+        setLoadingReserva(false);
+      }
+    };
 
-      // mapear respuesta del backend al shape usado en la UI
-      const mapped: any = {
-        id: String(apiRes.id ?? apiRes.reservationId ?? id),
-        usuarioId: String(apiRes.userId ?? apiRes.usuarioId ?? apiRes.user?.id ?? ''),
-        sedeId: String(apiRes.locationId ?? apiRes.sedeId ?? ''),
-        fecha: apiRes.reservationDate ?? apiRes.date ?? apiRes.fecha ?? '',
-        estado: (apiRes.status ?? apiRes.estado ?? 'ACTIVA') as any,
-        items: apiRes.items ?? [],
-        total: apiRes.cost ?? apiRes.total ?? 0,
-        fechaCreacion: apiRes.createdAt ?? apiRes.fechaCreacion ?? '',
-        meal: apiRes.mealTime ?? apiRes.meal ?? undefined,
-        slotId: apiRes.reservationTimeSlot ?? apiRes.slotId ?? undefined,
-        slotStart: apiRes.slotStartTime ?? apiRes.slotStart ?? undefined,
-        slotEnd: apiRes.slotEndTime ?? apiRes.slotEnd ?? undefined,
-      };
-
-      setReserva(mapped as any);
-      setCarrito([]);
-    } catch (err) {
-      // Si falla la petición, dejamos reserva en null (se mostrará 'Reserva no encontrada')
-      console.error('Error fetching reserva by id:', err);
-    }
-    finally {
-      setLoadingReserva(false);
-    }
-  };
-
-  fetchReserva();
-}, [id]);
+    fetchReserva();
+  }, [id, navigate]);
 
   // cuando tengamos la reserva, intentamos obtener el menú correspondiente (si existe)
   useEffect(() => {
@@ -138,6 +151,41 @@ export default function ReservaDetallePage() {
 
     fetchMenu();
     return () => { canceled = true; };
+  }, [reserva]);
+
+  // Cargar datos de la ubicación y el cliente desde el backend
+  useEffect(() => {
+    if (!reserva) return;
+    
+    // Cargar sede/ubicación
+    const fetchLocation = async () => {
+      try {
+        const locationRes: any = await api.get(`/locations/${reserva.sedeId}`);
+        setSede({
+          id: String(locationRes.id || reserva.sedeId),
+          nombre: locationRes.name || locationRes.nombre || 'Sede',
+          direccion: locationRes.address || locationRes.direccion || ''
+        });
+      } catch (err) {
+        console.warn('Error fetching location:', err);
+        // Usar valores por defecto si falla
+        setSede({
+          id: reserva.sedeId,
+          nombre: 'Sede',
+          direccion: ''
+        });
+      }
+    };
+
+    // Cargar cliente - por ahora usamos valores por defecto ya que no tenemos endpoint /users/:id
+    // TODO: Implementar cuando el backend tenga GET /users/:id
+    setCliente({
+      id: reserva.usuarioId,
+      nombre: 'Cliente',
+      email: 'cliente@test.com'
+    });
+
+    fetchLocation();
   }, [reserva]);
 
   const handleLogout = () => {
@@ -207,10 +255,7 @@ export default function ReservaDetallePage() {
       cantidad: item.cantidad
     }));
 
-    // ✅ Actualizamos en el store
-    actualizarReserva(reserva.id, { items, total });
-
-    // ✅ Pasamos también los ítems por "state" al navegar (fallback)
+    // Pasamos los ítems por "state" al navegar (fallback si falla el backend)
     navigate('/cajero/pago', {
       state: {
         reservaId: String(reserva.id),
@@ -281,9 +326,6 @@ export default function ReservaDetallePage() {
       </div>
     );
   }
-
-  const sede = sedes.find((s) => s.id === reserva.sedeId);
-  const cliente = usuarios.find(u => u.id === reserva.usuarioId);
 
   // Helpers para formateo
   const formatDateLong = (iso?: string) => {

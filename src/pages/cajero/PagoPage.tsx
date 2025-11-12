@@ -3,9 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
-import { useAuthStore, useReservaStore } from '../../lib/store';
-import { reservasIniciales } from '../../lib/data/mockData';
-import { COSTO_RESERVA } from '../../lib/config';
+import { useAuthStore } from '../../lib/store';
 import { ArrowLeft, User, LogOut, Receipt, Banknote, CreditCard, Wallet, Plus } from 'lucide-react';
 import type { Reserva } from '../../types';
 import { api } from '../../lib/http';
@@ -23,7 +21,6 @@ export default function PagoPage() {
   const location = useLocation();
   const params = useParams<{ id?: string; cartId?: string }>();
   const { user: cajeroUser, logout } = useAuthStore();
-  const actualizarReserva = useReservaStore((state) => state.actualizarReserva);
   
   const reservaId = String(location.state?.reservaId || '');
   const [reserva, setReserva] = useState<Reserva | null>(null);
@@ -48,10 +45,6 @@ export default function PagoPage() {
   // reservationDiscount may be returned by the backend (e.g. reservationDiscount: 500)
   const discountFromCart = Number(cartRes?.reservationDiscount ?? cartRes?.reservation_discount ?? cartRes?.reservationDiscountAmount ?? 0);
   setReservationDiscount(!Number.isNaN(discountFromCart) ? discountFromCart : null);
-
-        const reservaEncontrada: Reserva | undefined =
-          useReservaStore.getState().obtenerReservaPorId(reservationIdFromCart) ||
-          (reservasIniciales.find((r) => String(r.id) === reservationIdFromCart) as Reserva | undefined);
 
         // Support various backend shapes: items, products, productos, etc.
         const rawItems: any[] =
@@ -104,25 +97,18 @@ export default function PagoPage() {
 
         const subtotalFromCart = groupedItems.reduce((s: number, it: any) => s + ((it.consumible?.precio ?? 0) * (it.cantidad ?? 0)), 0);
 
-        if (reservaEncontrada) {
-          setReserva({
-            ...reservaEncontrada,
-            items: groupedItems,
-            total: subtotalFromCart,
-          });
-        } else {
-          // If no reservation found, still show the cart items as a temporary reserva-like object
-          setReserva({
-            id: reservationIdFromCart || `cart-${cartId}`,
-            usuarioId: '',
-            sedeId: '',
-            fecha: new Date().toISOString(),
-            estado: 'ACTIVA',
-            items: groupedItems,
-            total: subtotalFromCart,
-            fechaCreacion: new Date().toISOString(),
-          } as Reserva);
-        }
+        // Crear objeto de reserva con los datos del carrito
+        // Ya no usamos fallback a reservaEncontrada porque no tenemos store local
+        setReserva({
+          id: reservationIdFromCart || `cart-${cartId}`,
+          usuarioId: '',
+          sedeId: '',
+          fecha: new Date().toISOString(),
+          estado: 'ACTIVA',
+          items: groupedItems,
+          total: subtotalFromCart,
+          fechaCreacion: new Date().toISOString(),
+        } as Reserva);
       } catch (err: any) {
         console.warn('Error fetching cart by id:', err);
         setFetchError(err?.message || String(err));
@@ -146,16 +132,18 @@ export default function PagoPage() {
     const itemsFromState = location.state?.items;
     const totalFromState = location.state?.total;
 
-    const reservaEncontrada: Reserva | undefined =
-      useReservaStore.getState().obtenerReservaPorId(reservaId) ||
-      (reservasIniciales.find((r) => String(r.id) === reservaId) as Reserva | undefined);
-
-    if (reservaEncontrada) {
+    // Si tenemos items desde el state de navegación, crear reserva temporal
+    if (itemsFromState && reservaId) {
       setReserva({
-        ...reservaEncontrada,
-        items: itemsFromState || reservaEncontrada.items || [],
-        total: totalFromState || reservaEncontrada.total || 0,
-      });
+        id: reservaId,
+        usuarioId: '',
+        sedeId: '',
+        fecha: new Date().toISOString(),
+        estado: 'ACTIVA',
+        items: itemsFromState,
+        total: totalFromState || 0,
+        fechaCreacion: new Date().toISOString(),
+      } as Reserva);
     }
   }, [navigate, location, params.id, reservaId]);
 
@@ -200,13 +188,7 @@ export default function PagoPage() {
     const cartId = params.id || params.cartId || null;
 
     const doNavigateSuccess = () => {
-      actualizarReserva(reserva.id, {
-        items: reserva.items,
-        total: reserva.total,
-        estado: 'FINALIZADA',
-        metodoPago
-      });
-
+      // Ya no actualizamos el store local - solo navegamos
       navigate('/cajero/pago-exitoso', {
         state: {
           reservaId: reserva.id,
@@ -294,7 +276,8 @@ export default function PagoPage() {
     );
   }
 
-  const costoReserva = reservationDiscount !== null ? reservationDiscount : COSTO_RESERVA;
+  // Si el backend no provee descuento de reserva, usamos 0 (sin descuento)
+  const costoReserva = reservationDiscount !== null ? reservationDiscount : 0;
   const subtotal = reserva.total;
   const totalAPagar = subtotal - costoReserva;
 
