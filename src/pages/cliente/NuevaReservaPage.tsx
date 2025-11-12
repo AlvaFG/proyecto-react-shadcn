@@ -109,6 +109,7 @@ export default function NuevaReservaPage() {
         locationId,
         mealTime,
         reservationDate,
+        cost: COSTO_RESERVA,
       });
 
       const nuevaReserva: Reserva = {
