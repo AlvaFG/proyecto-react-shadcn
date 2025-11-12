@@ -110,7 +110,7 @@ export default function ChefDashboardPage() {
               <CardTitle className="text-lg font-semibold text-gray-800">Guía de Uso</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                 <div>
                   <h3 className="font-semibold text-gray-800 mb-2">Gestión Semanal</h3>
                   <ul className="space-y-1 text-gray-600">
@@ -125,13 +125,6 @@ export default function ChefDashboardPage() {
                     <li>• Crea nuevos platos y bebidas</li>
                     <li>• Actualiza precios y disponibilidad</li>
                     <li>• Organiza por categorías</li>
-                  </ul>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-800 mb-2">Planificación</h3>
-                  <ul className="space-y-1 text-gray-600">
-                    <li>• Crea menús con anticipación</li>
-                    <li>• Optimiza menús por semana (sic)</li>
                   </ul>
                 </div>
               </div>

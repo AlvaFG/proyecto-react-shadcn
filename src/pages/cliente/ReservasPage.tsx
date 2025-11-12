@@ -482,8 +482,6 @@ export default function ReservasPage() {
                     <p className="font-semibold mb-1">Políticas de Cancelación</p>
                     <ul className="list-disc list-inside space-y-1 text-amber-700">
                       <li>Solo puedes cancelar reservas activas futuras</li>
-                      <li>Cancelaciones gratuitas hasta 24 horas antes</li>
-                      <li>Después de 24 horas se cobra el 50% del valor de la reserva</li>
                       <li>El costo de reserva se devuelve al momento de tu asistencia</li>
                       <li>Las reservas pasadas no se pueden cancelar</li>
                     </ul>
