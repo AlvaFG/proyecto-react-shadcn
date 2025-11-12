@@ -336,12 +336,6 @@ export default function GestionSemanalChef() {
     return q ? items.filter((item) => normalize(item.nombre).includes(q)) : items;
   };
 
-  const calcularPrecioSeleccionado = (selection: SelectionState) => {
-    return [...selection.platos, ...selection.bebidas, ...selection.postres]
-      .map((id) => consumiblesMap.get(id)?.precio ?? 0)
-      .reduce((sum, precio) => sum + precio, 0);
-  };
-
   const formatMenuDisplay = (menu: ChefMenuAsignado) => {
     const secciones: string[] = [];
 
@@ -367,12 +361,6 @@ export default function GestionSemanalChef() {
     }
 
     return secciones.length ? secciones.join(' | ') : 'Sin consumibles asignados';
-  };
-
-  const calcularPrecioMenu = (menu: ChefMenuAsignado) => {
-    return [...menu.platoIds, ...menu.bebidaIds, ...menu.postreIds]
-      .map((id) => consumiblesMap.get(id)?.precio ?? 0)
-      .reduce((sum, precio) => sum + precio, 0);
   };
 
   const handleGuardarMenu = async () => {
@@ -603,7 +591,6 @@ export default function GestionSemanalChef() {
                         const hasItems = Boolean(
                           menu && (menu.platoIds.length + menu.bebidaIds.length + menu.postreIds.length > 0)
                         );
-                        const precioTotal = menu ? calcularPrecioMenu(menu) : 0;
 
                         return (
                           <td key={dia} className="border border-gray-300 p-3 align-top">
@@ -612,9 +599,6 @@ export default function GestionSemanalChef() {
                                 <div>
                                   <p className="font-semibold text-gray-800 text-sm">{turno.nombre}</p>
                                   <p className="text-sm text-gray-700 mt-1">{menu && formatMenuDisplay(menu)}</p>
-                                  <p className="text-sm font-semibold text-gray-800 mt-1">
-                                    $ {precioTotal.toFixed(2)}
-                                  </p>
                                 </div>
                                 <Button
                                   size="sm"
@@ -655,16 +639,9 @@ export default function GestionSemanalChef() {
               {editingCell && `Editar Menú - ${DIA_LABELS[editingCell.dia]} ${TURNOS.find((t) => t.id === editingCell.turno)?.nombre ?? ''}`}
             </DialogTitle>
             <DialogDescription className="text-sm">
-              Selecciona los consumibles para este día y turno. El precio total se calcula automáticamente con los consumibles actuales.
+              Selecciona los consumibles para este día y turno.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="flex items-center justify-between mt-2 text-sm text-gray-600">
-            <span>Precio estimado del menú:</span>
-            <span className="font-semibold text-gray-900">
-              $ {calcularPrecioSeleccionado(selectedItems).toFixed(2)}
-            </span>
-          </div>
 
           <Tabs defaultValue="platos" className="mt-4">
             <TabsList className="grid w-full grid-cols-3">

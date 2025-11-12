@@ -291,7 +291,7 @@ export default function ConsumiblesPage() {
             <CardTitle className="text-base font-semibold">{consumible.nombre}</CardTitle>
           </div>
           <Badge className="bg-[#8B6F47] text-white hover:bg-[#8B6F47]">
-            $ {consumible.precio.toFixed(3)}
+            $ {consumible.precio.toFixed(2)}
           </Badge>
         </div>
         {consumible.descripcion && (
