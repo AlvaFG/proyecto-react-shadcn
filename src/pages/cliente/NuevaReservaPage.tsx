@@ -44,7 +44,6 @@ export default function NuevaReservaPage() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, _setErrorMessage] = useState('');
   const [postingReserva, setPostingReserva] = useState(false);
-  const [costoReserva, setCostoReserva] = useState(COSTO_RESERVA);
 
   
 
@@ -66,30 +65,6 @@ export default function NuevaReservaPage() {
         setSedes([]);
       } finally {
         setLoadingSedes(false);
-      }
-    })();
-  }, []);
-
-  // Cargar el costo de reserva desde el backend
-  useEffect(() => {
-    (async () => {
-      try {
-        // Intentar obtener el costo desde el endpoint de configuración
-        const config = await api.get<{ reservationCost: number }>('/settings/reservation-cost');
-        if (config && typeof config.reservationCost === 'number') {
-          setCostoReserva(config.reservationCost);
-        }
-      } catch (error) {
-        // Si falla, intentar obtenerlo de una reserva existente
-        try {
-          const reservas = await api.get<any[]>('/reservations');
-          if (reservas && reservas.length > 0 && typeof reservas[0].cost === 'number') {
-            setCostoReserva(reservas[0].cost);
-          }
-        } catch (_) {
-          // Si todo falla, mantener el valor por defecto del config
-          console.log('Usando costo de reserva por defecto');
-        }
       }
     })();
   }, []);
@@ -134,7 +109,7 @@ export default function NuevaReservaPage() {
         locationId,
         mealTime,
         reservationDate,
-        cost: costoReserva,
+        cost: COSTO_RESERVA,
       });
 
       const nuevaReserva: Reserva = {
@@ -144,7 +119,7 @@ export default function NuevaReservaPage() {
         fecha: fechaSeleccionada,
         estado: 'ACTIVA',
         items: [],
-        total: costoReserva,
+        total: COSTO_RESERVA,
         fechaCreacion: new Date().toISOString(),
         meal: slotSeleccionado.meal,
         slotId: slotSeleccionado.id,
@@ -533,7 +508,7 @@ export default function NuevaReservaPage() {
                   <div className="mt-4 md:mt-6 pt-4 border-t">
                     <div className="flex justify-between items-center mb-4 md:mb-6">
                       <span className="text-sm md:text-base font-semibold text-gray-800">Total costo reserva</span>
-                      <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">$ {costoReserva.toFixed(0)}</span>
+                      <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">$ {COSTO_RESERVA.toFixed(0)}</span>
                     </div>
 
                     <div className="flex justify-end">
