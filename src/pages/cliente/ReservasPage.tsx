@@ -77,7 +77,8 @@ const normalizeStatus = (status: string): ReservaStatus => {
   if (normalized === 'ACTIVA') return 'ACTIVA';
   if (normalized === 'CONFIRMADA') return 'CONFIRMADA';
   if (normalized === 'CANCELADA') return 'CANCELADA';
-  if (normalized === 'AUSENTE') return 'FINALIZADA';
+  if (normalized === 'AUSENTE') return 'AUSENTE';
+  if (normalized === 'FINALIZADA') return 'FINALIZADA';
   return 'ACTIVA'; // default
 };
 
@@ -198,12 +199,23 @@ export default function ReservasPage() {
 
   const puedeCancelar = (reserva: ReservaFE): boolean => {
     if (reserva.estado !== 'ACTIVA') return false;
-    // Combinar fecha + hora
-    const fechaHoraReserva = new Date(`${reserva.fecha}T${reserva.slotStart}`);
+    
+    // Construir la fecha y hora de la reserva en formato ISO local
+    // Ejemplo: fecha = "2025-11-12", slotStart = "20:00" -> "2025-11-12T20:00:00"
+    const fechaHoraString = `${reserva.fecha}T${reserva.slotStart}:00`;
+    const fechaHoraReserva = new Date(fechaHoraString);
+    
+    // Obtener la fecha y hora actual
     const ahora = new Date();
-    // 2 horas antes en milisegundos
-    const dosHoras = 2 * 60 * 60 * 1000;
-    return fechaHoraReserva.getTime() - ahora.getTime() > dosHoras;
+    
+    // Calcular la diferencia en milisegundos
+    const diferenciaMs = fechaHoraReserva.getTime() - ahora.getTime();
+    
+    // 2 horas en milisegundos
+    const dosHorasMs = 2 * 60 * 60 * 1000;
+    
+    // Solo se puede cancelar si faltan más de 2 horas
+    return diferenciaMs > dosHorasMs;
   };
 
   return (
@@ -390,6 +402,11 @@ export default function ReservasPage() {
                         <p className="text-xs text-gray-500">Esta reserva ya fue completada</p>
                       </div>
                     )}
+                    {reserva.estado === 'AUSENTE' && (
+                      <div className="mt-auto pt-3 text-center">
+                        <p className="text-xs text-orange-600 font-medium">No asististe a esta reserva</p>
+                      </div>
+                    )}
                     {reserva.estado === 'CANCELADA' && (
                       <div className="mt-auto pt-3 text-center">
                         <p className="text-xs text-gray-500">Esta reserva fue cancelada</p>
@@ -397,7 +414,7 @@ export default function ReservasPage() {
                     )}
                     {reserva.estado === 'ACTIVA' && !mostrarBotonCancelar && (
                       <div className="mt-auto pt-3 text-center">
-                        <p className="text-xs text-gray-500">No se puede cancelar una reserva pasada</p>
+                        <p className="text-xs text-gray-500">No se puede cancelar (faltan menos de 2 horas)</p>
                       </div>
                     )}
                   </CardContent>

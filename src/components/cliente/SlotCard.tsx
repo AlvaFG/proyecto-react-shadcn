@@ -1,6 +1,6 @@
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Clock, Users, Check } from 'lucide-react';
+import { Clock, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { TurnoHorario } from '../../types';
 import { formatTimeSlot } from '../../lib/utils/slots';
@@ -53,12 +53,6 @@ export default function SlotCard({
             <h4 className={cn('font-semibold', sinCupo ? 'text-gray-400' : 'text-[#1E3A5F]')}>
               {formatTimeSlot(slot.start, slot.end)}
             </h4>
-            <div className="flex items-center gap-2 mt-1">
-              <Users className={cn('w-3 h-3', sinCupo ? 'text-gray-400' : 'text-gray-600')} />
-              <span className={cn('text-xs', sinCupo ? 'text-gray-400' : 'text-gray-600')}>
-                {available} / {slot.capacity} disponibles
-              </span>
-            </div>
           </div>
         </div>
         

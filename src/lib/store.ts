@@ -68,7 +68,7 @@ interface ReservaState {
 const migrarEstadosReservas = (reservas: Reserva[]): Reserva[] => {
   return reservas.map((reserva) => {
     // Si el estado no es válido (ej: "pendiente"), convertir a ACTIVA
-    const estadosValidos: ReservaStatus[] = ['ACTIVA', 'FINALIZADA', 'CANCELADA'];
+    const estadosValidos: ReservaStatus[] = ['ACTIVA', 'CONFIRMADA', 'FINALIZADA', 'CANCELADA', 'AUSENTE'];
     const estadoNormalizado = reserva.estado?.toUpperCase() as ReservaStatus;
     
     if (!estadosValidos.includes(estadoNormalizado)) {
