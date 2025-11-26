@@ -16,7 +16,7 @@ Agrega la siguiente variable:
 
 | Variable Name | Value | Environment |
 |--------------|-------|-------------|
-| `VITE_API_BASE_URL` | `https://comedor-g0exgubfa5ahhzdm.brazilsouth-01.azurewebsites.net` | Production |
+| `VITE_API_BASE_URL` | `https://comedorback.azurewebsites.net` | Production |
 
 **Importante:** NO incluyas el slash final en la URL.
 

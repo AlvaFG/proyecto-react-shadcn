@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://comedor-g0exgubfa5ahhzdm.brazilsouth-01.azurewebsites.net/api/:path*"
+      "destination": "https://comedorback.azurewebsites.net/api/:path*"
     },
     {
       "source": "/locations/:path*",
-      "destination": "https://comedor-g0exgubfa5ahhzdm.brazilsouth-01.azurewebsites.net/locations/:path*"
+      "destination": "https://comedorback.azurewebsites.net/locations/:path*"
     },
     {
       "source": "/(.*)",

@@ -10,7 +10,7 @@ function sanitize(url: string) {
 
 // Fallbacks por si falta la variable (evita crashear mientras se configura)
 const fallbackDev = 'http://localhost:8080';
-const fallbackProd = 'https://comedor-g0exgubfa5ahhzdm.brazilsouth-01.azurewebsites.net';
+const fallbackProd = 'https://comedorback.azurewebsites.net';
 
 export const API_BASE_URL = sanitize(
   fromEnv || (isDev ? fallbackDev : fallbackProd)
