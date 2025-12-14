@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '/auth': { target, changeOrigin: true, secure: false },
         '/locations': { target, changeOrigin: true, secure: false },
         '/reservations': { target, changeOrigin: true, secure: false },
         '/products': { target, changeOrigin: true, secure: false },

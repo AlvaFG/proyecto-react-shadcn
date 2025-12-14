@@ -11,7 +11,7 @@ import { useAuthStore, useReservaStore } from '../../lib/store';
 import { api } from '@/lib/http';
 import { User, LogOut, ArrowLeft, Calendar as CalendarIcon, MapPin, Clock, Check, AlertCircle, BellOff } from 'lucide-react';
 import type { Sede, Reserva, Meal, TurnoHorario } from '../../types';
-import { COSTO_RESERVA } from '../../lib/config';
+
 import { buildSlotsForMeal, getMealLabel } from '../../lib/utils/slots';
 
 const steps = [
@@ -44,7 +44,8 @@ export default function NuevaReservaPage() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, _setErrorMessage] = useState('');
   const [postingReserva, setPostingReserva] = useState(false);
-  const [costoReserva, setCostoReserva] = useState(COSTO_RESERVA);
+  const [costoReserva, setCostoReserva] = useState<number | null>(null);
+  const [costoError, setCostoError] = useState<string | null>(null);
 
   
 
@@ -77,10 +78,16 @@ export default function NuevaReservaPage() {
         const cost = await api.get<number>('/reservations/cost');
         if (typeof cost === 'number' && cost > 0) {
           setCostoReserva(cost);
+          setCostoError(null);
+        } else {
+          setCostoError('No se pudo obtener el costo de la reserva. Por favor, intente más tarde.');
         }
-      } catch (error) {
-        console.log('Error al cargar costo de reserva, usando valor por defecto:', error);
-        // Mantener el valor por defecto de COSTO_RESERVA
+      } catch (error: any) {
+        console.error('Error al cargar costo de reserva:', error);
+        const errorMsg = error?.status === 403 
+          ? 'No tiene permisos para consultar el costo de reserva. Por favor, vuelva a iniciar sesión.'
+          : 'No se pudo obtener el costo de la reserva. Por favor, intente más tarde.';
+        setCostoError(errorMsg);
       }
     })();
   }, []);
@@ -107,25 +114,26 @@ export default function NuevaReservaPage() {
 
     try {
       setPostingReserva(true);
-      const locationId = Number(sedeSeleccionada.id);
-      if (Number.isNaN(locationId)) {
-        throw new Error('ID de sede inválido.');
-      }
+      
+      // El locationId ahora es un UUID (string), no un número
+      const locationId = sedeSeleccionada.id;
 
-      const userId = Number(user.id);
-      if (Number.isNaN(userId)) {
-        throw new Error('ID de usuario inválido.');
-      }
-
+      // El backend obtiene el userId del JWT automáticamente, no lo enviamos
       const mealTime = slotSeleccionado.meal.toUpperCase();
       const reservationDate = `${fechaSeleccionada}T${slotSeleccionado.start}:00`;
 
-      await api.post<unknown>('/reservations', {
-        userId,
+      console.log('📤 Creando reserva:', {
         locationId,
         mealTime,
         reservationDate,
-        cost: costoReserva,
+        cost: costoReserva ?? 0,
+      });
+
+      await api.post<unknown>('/reservations', {
+        locationId,
+        mealTime,
+        reservationDate,
+        cost: costoReserva ?? 0,
       });
 
       const nuevaReserva: Reserva = {
@@ -135,7 +143,7 @@ export default function NuevaReservaPage() {
         fecha: fechaSeleccionada,
         estado: 'ACTIVA',
         items: [],
-        total: costoReserva,
+        total: costoReserva ?? 0,
         fechaCreacion: new Date().toISOString(),
         meal: slotSeleccionado.meal,
         slotId: slotSeleccionado.id,
@@ -522,15 +530,26 @@ export default function NuevaReservaPage() {
                   </div>
 
                   <div className="mt-4 md:mt-6 pt-4 border-t">
-                    <div className="flex justify-between items-center mb-4 md:mb-6">
-                      <span className="text-sm md:text-base font-semibold text-gray-800">Total costo reserva</span>
-                      <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">$ {costoReserva.toFixed(0)}</span>
-                    </div>
+                    {costoError ? (
+                      <div className="mb-4 md:mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                          <AlertCircle className="w-5 h-5 text-red-600 mr-3 mt-0.5 flex-shrink-0" />
+                          <p className="text-sm text-red-800">{costoError}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-center mb-4 md:mb-6">
+                        <span className="text-sm md:text-base font-semibold text-gray-800">Total costo reserva</span>
+                        <span className="text-xl md:text-2xl font-bold text-[#1E3A5F]">
+                          {costoReserva !== null ? `$ ${costoReserva.toFixed(0)}` : 'Cargando...'}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex justify-end">
                       <Button
                         onClick={handleConfirmar}
-                        disabled={!canProceed() || postingReserva}
+                        disabled={!canProceed() || postingReserva || costoReserva === null}
                         className="w-full md:w-auto bg-[#1E3A5F] hover:bg-[#2a5080] text-white px-6 md:px-8 py-2 md:py-3"
                       >
                         {postingReserva ? 'Confirmando...' : 'Confirmar Reserva'}

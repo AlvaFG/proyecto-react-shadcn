@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../lib/store';
 import { Button } from '../../components/ui/button';
@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Utensils } from 'lucide-react';
+import { redirectToCoreLogin } from '../../lib/auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,6 +16,14 @@ export default function LoginPage() {
   
   const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
+
+  // Redirigir automáticamente a Core login si no están en modo desarrollo
+  useEffect(() => {
+    // Solo en producción, redirigir a Core login
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      redirectToCoreLogin();
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +54,8 @@ export default function LoginPage() {
     }
   };
 
+  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#E8DED4] p-4">
       <Card className="w-full max-w-md border-none shadow-lg">
@@ -53,11 +64,16 @@ export default function LoginPage() {
             <Utensils className="w-10 h-10 text-white" />
           </div>
           <CardTitle className="text-2xl font-bold text-center text-[#1E3A5F]">
-            Sistema de Restaurante
+            Sistema de Comedor
           </CardTitle>
           <CardDescription className="text-center text-gray-600">
-            Ingrese sus credenciales para acceder
+            {isLocalDev ? 'Modo desarrollo - Login local' : 'Ingrese sus credenciales para acceder'}
           </CardDescription>
+          {isLocalDev && (
+            <div className="text-xs text-center text-blue-600 bg-blue-50 p-2 rounded mt-2">
+              ℹ️ En producción, esta página redirige automáticamente a Core Login
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

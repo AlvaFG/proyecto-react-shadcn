@@ -2,45 +2,98 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { User, Reserva, TurnoHorario, ReservaStatus, Consumible } from '../types';
 import { consumibles as consumiblesMock } from './data/mockData';
+import { API_BASE_URL } from './env';
 
 interface AuthState {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   setUser: (user: User) => void;
+  setToken: (token: string | null) => void;
+  setAuth: (user: User, token: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
+      token: null,
       isAuthenticated: false,
       login: async (email: string, password: string) => {
-        // Simulación de login
-        // En producción, esto haría una llamada a la API
-        
-        // Usuarios de prueba
-        const usuarios: User[] = [
-          { id: '1', nombre: 'Juan Pérez', email: 'cliente@test.com', rol: 'cliente' },
-          { id: '2', nombre: 'Chef María', email: 'chef@test.com', rol: 'chef' },
-          { id: '3', nombre: 'Cajero Pedro', email: 'cajero@test.com', rol: 'cajero' },
-        ];
+        try {
+          // Llamar al endpoint de login del backend
+          const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+          });
 
-        const user = usuarios.find((u) => u.email === email);
-        
-        if (user && password === '123456') {
-          set({ user, isAuthenticated: true });
-          return true;
+          if (!response.ok) {
+            return false;
+          }
+
+          const data = await response.json();
+          
+          // El backend debe retornar { token: "...", user: { ... } } o similar
+          // Ajustar según la estructura real de tu respuesta
+          const token = data.token || data.accessToken || data.access_token;
+          
+          if (!token) {
+            console.error('No token received from backend');
+            return false;
+          }
+
+          // Decodificar el JWT para obtener la información del usuario
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            
+            // Mapear el subrol del backend al rol del frontend
+            let rol: 'cliente' | 'chef' | 'cajero' = 'cliente';
+            if (payload.subrol === 'CAJERO') {
+              rol = 'cajero';
+            } else if (payload.subrol === 'CHEF') {
+              rol = 'chef';
+            } else if (payload.subrol === 'ESTUDIANTE') {
+              rol = 'cliente';
+            }
+
+            const user: User = {
+              id: payload.sub,
+              nombre: payload.name || 'Usuario',
+              email: payload.email,
+              rol,
+            };
+
+            set({ user, token, isAuthenticated: true });
+            return true;
+          } catch (decodeError) {
+            console.error('Error decoding JWT:', decodeError);
+            return false;
+          }
+        } catch (error) {
+          console.error('Login error:', error);
+          return false;
         }
-        
-        return false;
       },
       logout: () => {
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, token: null, isAuthenticated: false });
+        // Redirigir a Core login después de limpiar la sesión
+        import('./auth').then(({ redirectToCoreLogin }) => {
+          redirectToCoreLogin();
+        });
       },
       setUser: (user: User) => {
         set({ user, isAuthenticated: true });
+      },
+      setToken: (token: string | null) => {
+        set({ token });
+      },
+      setAuth: (user: User, token: string) => {
+        set({ user, token, isAuthenticated: true });
       },
     }),
     {
