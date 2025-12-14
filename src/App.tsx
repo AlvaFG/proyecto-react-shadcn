@@ -1,8 +1,7 @@
 ﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './lib/store';
-
-// Pages
-import LoginPage from './pages/login/LoginPage';
+import { useEffect, useState } from 'react';
+import { getJWTFromURL, cleanJWTFromURL, getUserFromJWT, shouldRedirectToLogin, redirectToCoreLogin } from './lib/auth';
 
 // Cliente Pages
 import ClienteDashboardPage from './pages/cliente/ClienteDashboardPage';
@@ -28,24 +27,83 @@ import ClienteLayout from './components/layouts/ClienteLayout';
 import './App.css';
 
 function App() {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, token, setUser, setToken } = useAuthStore();
+  const [authProcessed, setAuthProcessed] = useState(false);
+
+  // Manejo de autenticación con JWT desde URL (integración con Core)
+  useEffect(() => {
+    // Verificar si ya procesamos el JWT en esta sesión (evitar re-ejecución por Strict Mode)
+    const alreadyProcessed = sessionStorage.getItem('jwt-processed');
+    
+    if (alreadyProcessed) {
+      console.log('⏭️ JWT ya fue procesado en esta sesión');
+      setAuthProcessed(true);
+      return;
+    }
+    
+    // Verificar si hay un JWT en la URL
+    const jwtFromUrl = getJWTFromURL();
+    
+    if (jwtFromUrl) {
+      console.log('🔍 JWT encontrado en la URL');
+      
+      // Marcar como procesado INMEDIATAMENTE
+      sessionStorage.setItem('jwt-processed', 'true');
+      
+      // Limpiar el JWT de la URL
+      cleanJWTFromURL();
+      
+      // Validar el JWT
+      if (!shouldRedirectToLogin(jwtFromUrl)) {
+        // JWT válido - crear sesión del usuario
+        const userData = getUserFromJWT(jwtFromUrl);
+        console.log('📊 Datos del usuario extraídos del JWT:', userData);
+        
+        if (userData) {
+          console.log('✅ Usuario válido, estableciendo sesión');
+          console.log('🔑 Rol detectado:', userData.rol);
+          
+          // IMPORTANTE: Establecer usuario PRIMERO (esto establece isAuthenticated: true)
+          setUser(userData);
+          setToken(jwtFromUrl);
+          
+          // Marcar como procesado después de establecer la sesión
+          setAuthProcessed(true);
+          return;
+        } else {
+          console.error('❌ Error al extraer datos del usuario del JWT');
+          redirectToCoreLogin();
+          return;
+        }
+      } else {
+        // JWT inválido o vencido
+        console.warn('⚠️ JWT inválido o vencido, redirigiendo a Core login');
+        redirectToCoreLogin();
+        return;
+      }
+    }
+    
+    // No hay JWT en la URL - verificar si hay sesión válida
+    if (isAuthenticated && !shouldRedirectToLogin(token)) {
+      console.log('✅ Sesión existente válida');
+      sessionStorage.setItem('jwt-processed', 'true');
+      setAuthProcessed(true);
+    } else {
+      // No hay JWT en URL y tampoco hay sesión válida - redirigir a Core login
+      console.log('🚫 Sin JWT ni sesión válida, redirigiendo a Core login');
+      sessionStorage.setItem('jwt-processed', 'true');
+      redirectToCoreLogin();
+    }
+  }, []); // Solo ejecutar UNA VEZ al montar
+  
+  // Esperar a que se procese la autenticación Y el store esté listo
+  if (!authProcessed || (!isAuthenticated && !sessionStorage.getItem('jwt-processed'))) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Cargando...</div>;
+  }
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
-        <Route 
-          path="/login" 
-          element={
-            isAuthenticated ? (
-              user?.rol === 'cliente' ? <Navigate to="/dashboard" /> :
-              user?.rol === 'chef' ? <Navigate to="/chef/dashboard" /> :
-              <Navigate to="/cajero" />
-            ) : (
-              <LoginPage />
-            )
-          } 
-        />
 
         {/* Cliente Routes */}
         <Route
@@ -155,13 +213,23 @@ function App() {
         <Route 
           path="/" 
           element={
-            isAuthenticated ? (
-              user?.rol === 'cliente' ? <Navigate to="/dashboard" /> :
-              user?.rol === 'chef' ? <Navigate to="/chef/dashboard" /> :
-              <Navigate to="/cajero" />
-            ) : (
-              <Navigate to="/login" />
-            )
+            (() => {
+              console.log('🏠 Ruta raíz - isAuthenticated:', isAuthenticated);
+              console.log('🏠 Ruta raíz - user:', user);
+              console.log('🏠 Ruta raíz - rol:', user?.rol);
+              
+              if (isAuthenticated && user) {
+                const destination = 
+                  user.rol === 'cliente' ? '/dashboard' :
+                  user.rol === 'chef' ? '/chef/dashboard' :
+                  '/cajero';
+                console.log('🏠 Redirigiendo a:', destination);
+                return <Navigate to={destination} replace />;
+              }
+              
+              console.log('🏠 No autenticado, mostrando página de carga');
+              return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Iniciando sesión...</div>;
+            })()
           } 
         />
 

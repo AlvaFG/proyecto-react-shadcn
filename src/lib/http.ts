@@ -6,6 +6,20 @@ interface RequestOptions extends RequestInit {
   json?: unknown;
 }
 
+// Helper para obtener el token del localStorage
+function getAuthToken(): string | null {
+  try {
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const parsed = JSON.parse(authStorage);
+      return parsed?.state?.token || null;
+    }
+  } catch (e) {
+    console.warn('Error reading auth token:', e);
+  }
+  return null;
+}
+
 function buildUrl(path: string, query?: RequestOptions['query']) {
   let urlStr: string;
   if (/^https?:\/\//i.test(path)) {
@@ -35,11 +49,21 @@ async function request<T>(method: HttpMethod, path: string, opts: RequestOptions
   const { query, json, headers, ...init } = opts;
   const url = buildUrl(path, query);
   
+  // Obtener el token JWT si existe
+  const token = getAuthToken();
+  
+  if (!token) {
+    console.warn('⚠️ No se encontró token JWT en localStorage');
+  } else {
+    console.log('✅ Token JWT encontrado, enviando en Authorization header');
+  }
+  
   const res = await fetch(url, {
     method,
     headers: {
       'Accept': 'application/json',
       ...(json ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(headers || {}),
     },
     body: json !== undefined ? JSON.stringify(json) : init.body,
@@ -51,6 +75,15 @@ async function request<T>(method: HttpMethod, path: string, opts: RequestOptions
   const data = isJson ? await res.json() : (await res.text());
 
   if (!res.ok) {
+    // Si recibimos 401, el token probablemente venció - redirigir a Core login
+    if (res.status === 401) {
+      console.warn('Token vencido o inválido (401), redirigiendo a Core login');
+      // Importar dinámicamente para evitar problemas de circular dependency
+      import('./auth').then(({ redirectToCoreLogin }) => {
+        redirectToCoreLogin();
+      });
+    }
+
     const message = isJson && data && typeof data === 'object' && 'message' in (data as any)
       ? (data as any).message
       : res.statusText || 'Request failed';

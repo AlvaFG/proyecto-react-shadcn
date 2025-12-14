@@ -99,14 +99,13 @@ export default function ReservasPage() {
       try {
         setLoading(true);
         
-        // TODO: Obtener userId dinámicamente desde el login
-        // Por ahora usamos userId=1 hardcodeado
-        const userId = 1;
+        // El backend obtiene el userId del token JWT automáticamente
+        // No necesitamos pasarlo como parámetro
         
         // Cargar locations y reservas en paralelo
         const [locationsData, reservasData] = await Promise.all([
           api.get<LocationAPI[]>('/locations'),
-          api.get<ReservaAPI[]>(`/reservations/mine?userId=${userId}`),
+          api.get<ReservaAPI[]>('/reservations/mine'),
         ]);
 
         // Crear mapa de locations
