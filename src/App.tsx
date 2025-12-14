@@ -27,7 +27,7 @@ import ClienteLayout from './components/layouts/ClienteLayout';
 import './App.css';
 
 function App() {
-  const { isAuthenticated, user, token, setUser, setToken } = useAuthStore();
+  const { isAuthenticated, user, token, setAuth } = useAuthStore();
   const [authProcessed, setAuthProcessed] = useState(false);
 
   // Manejo de autenticación con JWT desde URL (integración con Core)
@@ -63,9 +63,8 @@ function App() {
           console.log('✅ Usuario válido, estableciendo sesión');
           console.log('🔑 Rol detectado:', userData.rol);
           
-          // IMPORTANTE: Establecer usuario PRIMERO (esto establece isAuthenticated: true)
-          setUser(userData);
-          setToken(jwtFromUrl);
+          // Establecer usuario y token juntos en una sola operación
+          setAuth(userData, jwtFromUrl);
           
           // Marcar como procesado después de establecer la sesión
           setAuthProcessed(true);
