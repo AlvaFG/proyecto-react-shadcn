@@ -57,39 +57,23 @@ export function cleanJWTFromURL(): void {
 }
 
 /**
- * Limpia todo el localStorage excepto el JWT
+ * Limpia completamente el localStorage
  * Esto previene que datos de usuarios anteriores persistan entre sesiones
+ * El JWT será proporcionado nuevamente por el portal cuando el usuario vuelva
  */
-export function clearLocalStorageExceptJWT(): void {
+export function clearAllLocalStorage(): void {
+  console.log('🧹 Iniciando limpieza de localStorage...');
   try {
-    // Obtener el JWT actual del localStorage (dentro de auth-storage)
-    const authStorage = localStorage.getItem('auth-storage');
-    let currentToken: string | null = null;
+    const keysBeforeClear = Object.keys(localStorage);
+    console.log('📦 Keys antes de limpiar:', keysBeforeClear);
     
-    if (authStorage) {
-      const parsed = JSON.parse(authStorage);
-      currentToken = parsed?.state?.token || null;
-    }
-    
-    // Limpiar todo el localStorage
     localStorage.clear();
     
-    // Restaurar solo el token si existía
-    if (currentToken) {
-      const authData = {
-        state: {
-          token: currentToken,
-          user: null,
-          isAuthenticated: false
-        },
-        version: 0
-      };
-      localStorage.setItem('auth-storage', JSON.stringify(authData));
-    }
+    const keysAfterClear = Object.keys(localStorage);
+    console.log('✅ LocalStorage limpiado completamente');
+    console.log('📦 Keys después de limpiar:', keysAfterClear);
   } catch (error) {
-    console.error('Error clearing localStorage:', error);
-    // En caso de error, limpiar todo
-    localStorage.clear();
+    console.error('❌ Error al limpiar localStorage:', error);
   }
 }
 
@@ -103,11 +87,19 @@ export function redirectToCoreLogin(): void {
 
 /**
  * Limpia la sesión local y redirige al portal central
- * Preserva únicamente el JWT para que el portal pueda gestionar la sesión
+ * El portal se encargará de gestionar la autenticación y proporcionar un nuevo JWT
  */
 export function returnToPortal(): void {
-  clearLocalStorageExceptJWT();
-  window.location.href = CORE_LOGIN_URL;
+  console.log('🔄 returnToPortal() llamado desde:', new Error().stack);
+  console.log('🌐 URL del portal:', CORE_LOGIN_URL);
+  
+  clearAllLocalStorage();
+  
+  console.log('🚀 Redirigiendo a portal en 1 segundo...');
+  setTimeout(() => {
+    console.log('🔗 Ejecutando redirección ahora:', CORE_LOGIN_URL);
+    window.location.href = CORE_LOGIN_URL;
+  }, 1000);
 }
 
 /**

@@ -3,12 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Calendar, Coffee, LogOut, User } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 
 export default function ChefDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
   const handleVolverAlPortal = () => {
+    console.log('🔵 ChefDashboardPage: handleVolverAlPortal llamado');
     returnToPortal();
   };
 

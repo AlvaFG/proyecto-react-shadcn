@@ -47,6 +47,7 @@ export default function CajeroPage() {
   };
 
   const handleVolverAlPortal = () => {
+    console.log('🔵 CajeroPage: handleVolverAlPortal llamado');
     returnToPortal();
   };
 

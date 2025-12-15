@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { User, LogOut, Clock, ArrowLeft, UtensilsCrossed } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 
 import { api } from '@/lib/http'
 import type { Sede } from '@/types'
@@ -223,6 +224,7 @@ export default function MenuPage() {
   const postres = productosDelDia.postres;
 
   const handleVolverAlPortal = () => {
+    console.log('🔵 MenuPage: handleVolverAlPortal llamado');
     returnToPortal();
   };
 

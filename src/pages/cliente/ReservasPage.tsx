@@ -5,6 +5,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Badge } from '../../components/ui/badge';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 import { MapPin, Clock, AlertTriangle, Plus, ArrowLeft, User, LogOut } from 'lucide-react';
 import { formatFechaLargaEs } from '../../lib/date';
 import type { ReservaStatus } from '../../types';
@@ -190,6 +191,7 @@ export default function ReservasPage() {
   };
 
   const handleVolverAlPortal = () => {
+    console.log('🔵 ReservasPage: handleVolverAlPortal llamado');
     returnToPortal();
   };
 
