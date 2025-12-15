@@ -1,7 +1,7 @@
 ﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './lib/store';
 import { useEffect, useState } from 'react';
-import { getJWTFromURL, cleanJWTFromURL, getUserFromJWT, shouldRedirectToLogin, redirectToCoreLogin } from './lib/auth';
+import { getJWTFromURL, cleanJWTFromURL, getUserFromJWT, shouldRedirectToLogin, redirectToCoreLogin, returnToPortal } from './lib/auth';
 
 // Cliente Pages
 import ClienteDashboardPage from './pages/cliente/ClienteDashboardPage';
@@ -88,10 +88,10 @@ function App() {
       sessionStorage.setItem('jwt-processed', 'true');
       setAuthProcessed(true);
     } else {
-      // No hay JWT en URL y tampoco hay sesión válida - redirigir a Core login
-      console.log('🚫 Sin JWT ni sesión válida, redirigiendo a Core login');
+      // No hay JWT en URL y tampoco hay sesión válida - redirigir al portal sin redirectUrl
+      console.log('🚫 Sin JWT ni sesión válida, redirigiendo al portal');
       sessionStorage.setItem('jwt-processed', 'true');
-      redirectToCoreLogin();
+      returnToPortal(); // Usar returnToPortal en lugar de redirectToCoreLogin
     }
   }, []); // Solo ejecutar UNA VEZ al montar
   
