@@ -9,7 +9,7 @@ export default function ChefDashboardPage() {
   const { user } = useAuthStore();
 
   const handleVolverAlPortal = () => {
-    returnToPortal();
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   return (
