@@ -11,7 +11,7 @@ import { useAuthStore } from '../../lib/store';
 export default function CajeroPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [reservaId, setReservaId] = useState('');
   const [errorDialog, setErrorDialog] = useState<{ show: boolean; message: string }>({
     show: false,
@@ -45,9 +45,8 @@ export default function CajeroPage() {
     navigate(`/cajero/reserva/${normalizedId}`);
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   return (
@@ -67,11 +66,11 @@ export default function CajeroPage() {
               </div>
               <Button 
                 variant="outline"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>

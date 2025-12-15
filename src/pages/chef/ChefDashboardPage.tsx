@@ -6,11 +6,10 @@ import { useAuthStore } from '../../lib/store';
 
 export default function ChefDashboardPage() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   return (
@@ -33,11 +32,11 @@ export default function ChefDashboardPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="flex items-center gap-2 text-gray-600 hover:text-red-600"
               >
                 <LogOut className="w-4 h-4" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>

@@ -55,7 +55,7 @@ const toBackendProductType = (tipo: 'plato' | 'bebida' | 'postre'): string => {
 
 export default function ConsumiblesPage() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const removeConsumibleFromMenus = useChefMenuStore((state) => state.removeConsumibleFromMenus);
   
   // Estados para consumibles del API
@@ -119,9 +119,8 @@ export default function ConsumiblesPage() {
     return consumibles.filter((c) => normalize(c.nombre).includes(q));
   }, [consumibles, searchQuery]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const handleCreate = () => {
@@ -366,11 +365,11 @@ export default function ConsumiblesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
-                className="text-gray-600 hover:text-gray-800"
+                onClick={handleVolverAlPortal}
+                className="text-gray-600 hover:text-red-600"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>

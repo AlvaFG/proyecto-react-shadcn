@@ -30,7 +30,7 @@ export default function ReservaDetallePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id: string }>();
-  const { user: cajeroUser, logout } = useAuthStore();
+  const { user: cajeroUser } = useAuthStore();
 
   const [reserva, setReserva] = useState<Reserva | null>(null);
   const [carrito, setCarrito] = useState<CartItem[]>([]);
@@ -240,9 +240,8 @@ export default function ReservaDetallePage() {
     fetchCliente();
   }, [reserva]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const agregarAlCarrito = (consumible: Consumible) => {
@@ -438,11 +437,11 @@ export default function ReservaDetallePage() {
               </div>
               <Button
                 variant="outline"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>
