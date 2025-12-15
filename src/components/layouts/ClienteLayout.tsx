@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 import { LogOut, User } from 'lucide-react';
 
 interface LayoutProps {
@@ -9,11 +10,11 @@ interface LayoutProps {
 
 export default function ClienteLayout({ children }: LayoutProps) {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    console.log('🔵 ClienteLayout: Volviendo al portal');
+    returnToPortal();
   };
 
   return (
@@ -42,11 +43,11 @@ export default function ClienteLayout({ children }: LayoutProps) {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#1E3A5F] hover:text-white"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>
