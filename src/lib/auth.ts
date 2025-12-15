@@ -57,11 +57,57 @@ export function cleanJWTFromURL(): void {
 }
 
 /**
+ * Limpia todo el localStorage excepto el JWT
+ * Esto previene que datos de usuarios anteriores persistan entre sesiones
+ */
+export function clearLocalStorageExceptJWT(): void {
+  try {
+    // Obtener el JWT actual del localStorage (dentro de auth-storage)
+    const authStorage = localStorage.getItem('auth-storage');
+    let currentToken: string | null = null;
+    
+    if (authStorage) {
+      const parsed = JSON.parse(authStorage);
+      currentToken = parsed?.state?.token || null;
+    }
+    
+    // Limpiar todo el localStorage
+    localStorage.clear();
+    
+    // Restaurar solo el token si existía
+    if (currentToken) {
+      const authData = {
+        state: {
+          token: currentToken,
+          user: null,
+          isAuthenticated: false
+        },
+        version: 0
+      };
+      localStorage.setItem('auth-storage', JSON.stringify(authData));
+    }
+  } catch (error) {
+    console.error('Error clearing localStorage:', error);
+    // En caso de error, limpiar todo
+    localStorage.clear();
+  }
+}
+
+/**
  * Redirige al login de Core con la URL de retorno
  */
 export function redirectToCoreLogin(): void {
   const redirectUrl = encodeURIComponent(APP_URL);
   window.location.href = `${CORE_LOGIN_URL}?redirectUrl=${redirectUrl}`;
+}
+
+/**
+ * Limpia la sesión local y redirige al portal central
+ * Preserva únicamente el JWT para que el portal pueda gestionar la sesión
+ */
+export function returnToPortal(): void {
+  clearLocalStorageExceptJWT();
+  window.location.href = CORE_LOGIN_URL;
 }
 
 /**
