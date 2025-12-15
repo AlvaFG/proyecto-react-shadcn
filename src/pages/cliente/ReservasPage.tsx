@@ -190,7 +190,7 @@ export default function ReservasPage() {
   };
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   const formatearFecha = (fecha: string) => formatFechaLargaEs(fecha);

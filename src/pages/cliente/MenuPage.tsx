@@ -223,7 +223,7 @@ export default function MenuPage() {
   const postres = productosDelDia.postres;
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   return (
