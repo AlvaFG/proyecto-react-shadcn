@@ -7,7 +7,6 @@ import { useAuthStore } from '../../lib/store';
 import { ArrowLeft, User, LogOut, Receipt, Banknote, CreditCard, Wallet, Plus } from 'lucide-react';
 import type { Reserva } from '../../types';
 import { api } from '../../lib/http';
-import { returnToPortal } from '../../lib/auth';
 
 const formatPrice = (n: number) => {
   try {
@@ -152,7 +151,7 @@ export default function PagoPage() {
   }, [navigate, location, params.id, reservaId]);
 
   const handleVolverAlPortal = () => {
-    returnToPortal();
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const disminuirCantidad = (consumibleId: string) => {
