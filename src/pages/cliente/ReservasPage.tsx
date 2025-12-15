@@ -84,7 +84,7 @@ const normalizeStatus = (status: string): ReservaStatus => {
 
 export default function ReservasPage() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   
   // Estados
   const [reservas, setReservas] = useState<ReservaFE[]>([]);
@@ -189,9 +189,8 @@ export default function ReservasPage() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const formatearFecha = (fecha: string) => formatFechaLargaEs(fecha);
@@ -265,16 +264,16 @@ export default function ReservasPage() {
                 {user?.nombre || 'Usuario'}
               </span>
               
-              {/* Botón Cerrar Sesión */}
+              {/* Botón Volver al Portal */}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
-                className="text-gray-600 hover:text-gray-800 px-2 sm:px-3 shrink-0"
+                onClick={handleVolverAlPortal}
+                className="flex items-center gap-2 text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4 h-4" />
-                <span className="hidden lg:inline ml-2">Cerrar Sesión</span>
-                <span className="sr-only">Cerrar sesión</span>
+                <span className="hidden lg:inline ml-2">Volver al Portal</span>
+                <span className="sr-only">Volver al portal</span>
               </Button>
             </div>
           </div>

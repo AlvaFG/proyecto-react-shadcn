@@ -20,7 +20,7 @@ export default function PagoPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ id?: string; cartId?: string }>();
-  const { user: cajeroUser, logout } = useAuthStore();
+  const { user: cajeroUser } = useAuthStore();
   
   const reservaId = String(location.state?.reservaId || '');
   const [reserva, setReserva] = useState<Reserva | null>(null);
@@ -150,9 +150,8 @@ export default function PagoPage() {
     }
   }, [navigate, location, params.id, reservaId]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const disminuirCantidad = (consumibleId: string) => {
@@ -361,11 +360,11 @@ export default function PagoPage() {
               </div>
               <Button
                 variant="outline"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>

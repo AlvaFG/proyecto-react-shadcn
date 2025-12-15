@@ -8,6 +8,17 @@ export interface User {
   avatar?: string;
 }
 
+// Backoffice User from https://backoffice-production-df78.up.railway.app/api/v1/users/
+export interface BackofficeUser {
+  id: string;
+  legajo: string;
+  dni: string;
+  nombre: string;
+  email_institucional: string;
+  email_personal: string;
+  status: string;
+}
+
 export interface Sede {
   id: string;
   nombre: string;

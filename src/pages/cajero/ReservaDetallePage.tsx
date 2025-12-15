@@ -4,10 +4,10 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { useAuthStore } from '../../lib/store';
-import { api } from '../../lib/http';
+import { api, backofficeApi } from '../../lib/http';
 import { RESERVA_STATUS_LABEL } from '../../types';
 import { ArrowLeft, User, LogOut, Calendar, Utensils, Wine, Cake, ShoppingCart } from 'lucide-react';
-import type { Reserva, Consumible } from '../../types';
+import type { Reserva, Consumible, BackofficeUser } from '../../types';
 
 interface CartItem {
   consumible: Consumible;
@@ -23,14 +23,14 @@ interface LocationData {
 interface ClienteData {
   id: string;
   nombre: string;
-  email: string;
+  legajo: string;
 }
 
 export default function ReservaDetallePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id: string }>();
-  const { user: cajeroUser, logout } = useAuthStore();
+  const { user: cajeroUser } = useAuthStore();
 
   const [reserva, setReserva] = useState<Reserva | null>(null);
   const [carrito, setCarrito] = useState<CartItem[]>([]);
@@ -198,20 +198,50 @@ export default function ReservaDetallePage() {
       }
     };
 
-    // Cargar cliente - por ahora usamos valores por defecto ya que no tenemos endpoint /users/:id
-    // TODO: Implementar cuando el backend tenga GET /users/:id
-    setCliente({
-      id: reserva.usuarioId,
-      nombre: 'Cliente',
-      email: 'cliente@test.com'
-    });
+    // Cargar datos del cliente desde backoffice
+    const fetchCliente = async () => {
+      try {
+        // El endpoint /users/ acepta query parameters para búsqueda
+        const userRes: BackofficeUser[] = await backofficeApi.get('/users/', {
+          query: { 
+            param: 'id',
+            value: reserva.usuarioId 
+          }
+        });
+        
+        // La respuesta es un array, tomamos el primer resultado
+        if (userRes && userRes.length > 0) {
+          const user = userRes[0];
+          setCliente({
+            id: reserva.usuarioId,
+            nombre: user.nombre || 'Cliente',
+            legajo: user.legajo || '-'
+          });
+        } else {
+          // No se encontró el usuario
+          setCliente({
+            id: reserva.usuarioId,
+            nombre: 'Usuario no encontrado',
+            legajo: '-'
+          });
+        }
+      } catch (err) {
+        console.warn('Error fetching user from backoffice:', err);
+        // Usar valores por defecto si falla
+        setCliente({
+          id: reserva.usuarioId,
+          nombre: 'Error al cargar',
+          legajo: '-'
+        });
+      }
+    };
 
     fetchLocation();
+    fetchCliente();
   }, [reserva]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   const agregarAlCarrito = (consumible: Consumible) => {
@@ -407,11 +437,11 @@ export default function ReservaDetallePage() {
               </div>
               <Button
                 variant="outline"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>
@@ -445,16 +475,12 @@ export default function ReservaDetallePage() {
             </div>
             <div className="space-y-3">
               <div>
-                <p className="text-sm text-gray-600">Nombre</p>
-                <p className="font-semibold text-gray-900">{cliente?.nombre || 'Juan Pérez'}</p>
+                <p className="text-sm text-gray-600">Nombre Completo</p>
+                <p className="font-semibold text-gray-900">{cliente?.nombre || 'Cargando...'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Email</p>
-                <p className="font-semibold text-gray-900">{cliente?.email || 'cliente@test.com'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">ID de Cliente</p>
-                <p className="font-semibold text-gray-900">{reserva.usuarioId || '-'}</p>
+                <p className="text-sm text-gray-600">Legajo</p>
+                <p className="font-semibold text-gray-900">{cliente?.legajo || 'Cargando...'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Estado de Reserva</p>

@@ -104,7 +104,7 @@ const getHorarioDefault = (): HorarioComida => {
 export default function MenuPage() {
 
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [sedesState, setSedesState] = useState<Sede[]>([]);
   const [loadingSedes, setLoadingSedes] = useState(true);
   
@@ -222,9 +222,8 @@ export default function MenuPage() {
   const bebidas = productosDelDia.bebidas;
   const postres = productosDelDia.postres;
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   return (
@@ -275,16 +274,16 @@ export default function MenuPage() {
                 {user?.nombre || 'Usuario'}
               </span>
               
-              {/* Botón Cerrar Sesión */}
+              {/* Botón Volver al Portal */}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="text-gray-600 hover:text-gray-800 px-2 sm:px-3 shrink-0"
               >
                 <LogOut className="w-4 h-4" />
-                <span className="hidden lg:inline ml-2">Cerrar Sesión</span>
-                <span className="sr-only">Cerrar sesión</span>
+                <span className="hidden lg:inline ml-2">Volver al Portal</span>
+                <span className="sr-only">Volver al portal</span>
               </Button>
             </div>
           </div>

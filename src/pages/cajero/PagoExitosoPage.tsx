@@ -7,15 +7,14 @@ import { useAuthStore } from '../../lib/store';
 export default function PagoExitosoPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user: cajeroUser, logout } = useAuthStore();
+  const { user: cajeroUser } = useAuthStore();
   const { reservaId } = location.state || {};
 
   // Generar número de pedido único
   const numeroPedido = `ORD${Date.now().toString().slice(-6)}`;
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleVolverAlPortal = () => {
+    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
   };
 
   return (
@@ -43,13 +42,13 @@ export default function PagoExitosoPage() {
                 <User className="w-4 h-4" />
                 <span className="text-sm font-medium">{cajeroUser?.nombre || 'Cajero Demo'}</span>
               </div>
-              <Button 
+              <Button
                 variant="outline"
-                onClick={handleLogout}
+                onClick={handleVolverAlPortal}
                 className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-blue-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
+                Volver al Portal
               </Button>
             </div>
           </div>
