@@ -3,13 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Calendar, Coffee, LogOut, User } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 
 export default function ChefDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    console.log('🔵 ChefDashboardPage: handleVolverAlPortal llamado');
+    returnToPortal();
   };
 
   return (

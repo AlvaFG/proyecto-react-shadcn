@@ -3,6 +3,7 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { CheckCircle2, User, LogOut, Home } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 
 export default function PagoExitosoPage() {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ export default function PagoExitosoPage() {
   const numeroPedido = `ORD${Date.now().toString().slice(-6)}`;
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   return (

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import Stepper from '../../components/cliente/Stepper';
 import SlotCard from '../../components/cliente/SlotCard';
 import { useAuthStore, useReservaStore } from '../../lib/store';
+import { returnToPortal } from '../../lib/auth';
 
 import { api } from '@/lib/http';
 import { User, LogOut, ArrowLeft, Calendar as CalendarIcon, MapPin, Clock, Check, AlertCircle, BellOff } from 'lucide-react';
@@ -93,7 +94,8 @@ export default function NuevaReservaPage() {
   }, []);
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    console.log('🔵 NuevaReservaPage: handleVolverAlPortal llamado');
+    returnToPortal();
   };
 
   const handleNext = () => {

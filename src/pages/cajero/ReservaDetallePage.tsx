@@ -8,6 +8,7 @@ import { api, backofficeApi } from '../../lib/http';
 import { RESERVA_STATUS_LABEL } from '../../types';
 import { ArrowLeft, User, LogOut, Calendar, Utensils, Wine, Cake, ShoppingCart } from 'lucide-react';
 import type { Reserva, Consumible, BackofficeUser } from '../../types';
+import { returnToPortal } from '../../lib/auth';
 
 interface CartItem {
   consumible: Consumible;
@@ -241,7 +242,7 @@ export default function ReservaDetallePage() {
   }, [reserva]);
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   const agregarAlCarrito = (consumible: Consumible) => {

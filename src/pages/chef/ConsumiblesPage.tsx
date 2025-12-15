@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Edit, Trash2, User, LogOut, Utensils, Wine, Cake, Home, Search } from 'lucide-react';
 import { useAuthStore, useChefMenuStore } from '../../lib/store';
 import { api } from '@/lib/http';
+import { returnToPortal } from '../../lib/auth';
 
 // Tipos para mapear la respuesta del API
 interface ProductAPI {
@@ -120,7 +121,7 @@ export default function ConsumiblesPage() {
   }, [consumibles, searchQuery]);
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   const handleCreate = () => {

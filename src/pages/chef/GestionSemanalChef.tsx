@@ -17,6 +17,7 @@ import {
 } from '../../lib/store';
 import type { Consumible } from '../../types';
 import { api } from '../../lib/http';
+import { returnToPortal } from '../../lib/auth';
 
 // Tipos para mapear la respuesta del API
 interface ProductAPI {
@@ -266,7 +267,7 @@ export default function GestionSemanalChef() {
       .toLowerCase();
 
   const handleVolverAlPortal = () => {
-    window.location.href = 'https://core-frontend-2025-02.netlify.app/';
+    returnToPortal();
   };
 
   const handleAsignarMenu = (turno: TurnoId, dia: DiaSemana) => {

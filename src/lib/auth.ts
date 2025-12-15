@@ -57,11 +57,49 @@ export function cleanJWTFromURL(): void {
 }
 
 /**
+ * Limpia completamente el localStorage
+ * Esto previene que datos de usuarios anteriores persistan entre sesiones
+ * El JWT será proporcionado nuevamente por el portal cuando el usuario vuelva
+ */
+export function clearAllLocalStorage(): void {
+  console.log('🧹 Iniciando limpieza de localStorage...');
+  try {
+    const keysBeforeClear = Object.keys(localStorage);
+    console.log('📦 Keys antes de limpiar:', keysBeforeClear);
+    
+    localStorage.clear();
+    
+    const keysAfterClear = Object.keys(localStorage);
+    console.log('✅ LocalStorage limpiado completamente');
+    console.log('📦 Keys después de limpiar:', keysAfterClear);
+  } catch (error) {
+    console.error('❌ Error al limpiar localStorage:', error);
+  }
+}
+
+/**
  * Redirige al login de Core con la URL de retorno
  */
 export function redirectToCoreLogin(): void {
   const redirectUrl = encodeURIComponent(APP_URL);
   window.location.href = `${CORE_LOGIN_URL}?redirectUrl=${redirectUrl}`;
+}
+
+/**
+ * Limpia la sesión local y redirige al portal central
+ * El portal se encargará de gestionar la autenticación y proporcionar un nuevo JWT
+ */
+export function returnToPortal(): void {
+  console.log('🔄 returnToPortal() llamado desde:', new Error().stack);
+  console.log('🌐 URL del portal:', CORE_LOGIN_URL);
+  
+  clearAllLocalStorage();
+  
+  console.log('🚀 Redirigiendo a portal en 1 segundo...');
+  setTimeout(() => {
+    console.log('🔗 Ejecutando redirección ahora:', CORE_LOGIN_URL);
+    window.location.href = CORE_LOGIN_URL;
+  }, 1000);
 }
 
 /**
