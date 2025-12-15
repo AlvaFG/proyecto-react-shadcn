@@ -57,23 +57,34 @@ export function cleanJWTFromURL(): void {
 }
 
 /**
- * Limpia completamente el localStorage
+ * Limpia completamente el localStorage y sessionStorage
  * Esto previene que datos de usuarios anteriores persistan entre sesiones
  * El JWT será proporcionado nuevamente por el portal cuando el usuario vuelva
  */
 export function clearAllLocalStorage(): void {
-  console.log('🧹 Iniciando limpieza de localStorage...');
+  console.log('🧹 Iniciando limpieza de localStorage y sessionStorage...');
   try {
-    const keysBeforeClear = Object.keys(localStorage);
-    console.log('📦 Keys antes de limpiar:', keysBeforeClear);
+    const localKeysBeforeClear = Object.keys(localStorage);
+    const sessionKeysBeforeClear = Object.keys(sessionStorage);
     
+    console.log('📦 localStorage keys antes de limpiar:', localKeysBeforeClear);
+    console.log('📦 sessionStorage keys antes de limpiar:', sessionKeysBeforeClear);
+    
+    // Limpiar localStorage
     localStorage.clear();
     
-    const keysAfterClear = Object.keys(localStorage);
-    console.log('✅ LocalStorage limpiado completamente');
-    console.log('📦 Keys después de limpiar:', keysAfterClear);
+    // Limpiar sessionStorage (especialmente el flag 'jwt-processed')
+    sessionStorage.clear();
+    
+    const localKeysAfterClear = Object.keys(localStorage);
+    const sessionKeysAfterClear = Object.keys(sessionStorage);
+    
+    console.log('✅ localStorage limpiado completamente');
+    console.log('📦 localStorage keys después de limpiar:', localKeysAfterClear);
+    console.log('✅ sessionStorage limpiado completamente');
+    console.log('📦 sessionStorage keys después de limpiar:', sessionKeysAfterClear);
   } catch (error) {
-    console.error('❌ Error al limpiar localStorage:', error);
+    console.error('❌ Error al limpiar storage:', error);
   }
 }
 
