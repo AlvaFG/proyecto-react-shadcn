@@ -199,7 +199,32 @@ export default function PagoPage() {
     setFetchError(null);
     
     try {
-      // Llamar al endpoint de confirmación
+      // Mapear el método de pago al formato del backend
+      let metodoPagoBackend: 'EFECTIVO' | 'TRANSFERENCIA' | 'SALDOCUENTA';
+      if (metodoPago === 'efectivo') {
+        metodoPagoBackend = 'EFECTIVO';
+      } else if (metodoPago === 'transferencia') {
+        metodoPagoBackend = 'TRANSFERENCIA';
+      } else if (metodoPago === 'tarjeta') {
+        metodoPagoBackend = 'SALDOCUENTA';
+      } else {
+        console.error('Método de pago no reconocido:', metodoPago);
+        metodoPagoBackend = 'EFECTIVO';
+      }
+
+      // Paso 1: Actualizar el carrito con el método de pago seleccionado
+      const cartItems = reserva.items.map(item => ({
+        consumibleId: item.consumibleId,
+        cantidad: item.cantidad
+      }));
+
+      await api.put(`/carts/${cartId}`, {
+        paymentMethod: metodoPagoBackend,
+        cart: cartItems,
+        reservationId: reserva.id
+      });
+
+      // Paso 2: Confirmar el carrito
       await api.post(`/carts/confirmation/${cartId}`);
       
       // Navegar a página de éxito
