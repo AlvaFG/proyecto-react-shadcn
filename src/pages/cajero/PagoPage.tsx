@@ -218,10 +218,13 @@ export default function PagoPage() {
         cantidad: item.cantidad
       }));
 
+      // Convertir reservationId a número si es necesario
+      const reservationIdNumber = Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id);
+
       await api.put(`/carts/${cartId}`, {
         paymentMethod: metodoPagoBackend,
         cart: cartItems,
-        reservationId: reserva.id
+        reservationId: reservationIdNumber
       });
 
       // Paso 2: Confirmar el carrito
