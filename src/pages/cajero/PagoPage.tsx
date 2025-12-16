@@ -213,17 +213,20 @@ export default function PagoPage() {
       }
 
       // Paso 1: Actualizar el carrito con el método de pago seleccionado
-      const cartItems = reserva.items.map(item => ({
-        consumibleId: item.consumibleId,
-        cantidad: item.cantidad
-      }));
+      // Expandir items a array de IDs (repetir cada ID según cantidad)
+      const cartIds: string[] = [];
+      reserva.items.forEach(item => {
+        for (let i = 0; i < item.cantidad; i++) {
+          cartIds.push(item.consumibleId);
+        }
+      });
 
       // Convertir reservationId a número si es necesario
       const reservationIdNumber = Number.isNaN(Number(reserva.id)) ? reserva.id : Number(reserva.id);
 
       await api.put(`/carts/${cartId}`, {
         paymentMethod: metodoPagoBackend,
-        cart: cartItems,
+        cart: cartIds,
         reservationId: reservationIdNumber
       });
 
