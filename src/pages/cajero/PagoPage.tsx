@@ -261,12 +261,26 @@ export default function PagoPage() {
       cantidad: item.cantidad
     }));
 
+    // Mapear método de pago al formato del backend
+    let metodoPagoBackend: 'EFECTIVO' | 'TRANSFERENCIA' | 'SALDOCUENTA';
+    if (metodoPago === 'efectivo') {
+      metodoPagoBackend = 'EFECTIVO';
+    } else if (metodoPago === 'transferencia') {
+      metodoPagoBackend = 'TRANSFERENCIA';
+    } else if (metodoPago === 'tarjeta') {
+      metodoPagoBackend = 'SALDOCUENTA';
+    } else {
+      // Fallback de seguridad - no debería llegar aquí
+      console.error('Método de pago no reconocido:', metodoPago);
+      metodoPagoBackend = 'EFECTIVO';
+    }
+
     // Navegar de vuelta a ReservaDetallePage con el carrito actual
     navigate(`/cajero/reserva/${reserva.id}`, {
       state: {
         cartId: cartId,
         carrito: carritoItems,
-        metodoPago: metodoPago.toUpperCase()
+        metodoPago: metodoPagoBackend
       }
     });
   };
