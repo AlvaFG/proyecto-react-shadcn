@@ -51,7 +51,6 @@ interface Producto {
   descripcion: string;
   precio: number;
   imagen?: string;
-  disponible: boolean;
 }
 
 // Días de la semana
@@ -189,7 +188,6 @@ export default function MenuPage() {
       descripcion: p.description,
       precio: p.price,
       imagen: p.imageUrl,
-      disponible: p.active,
     }));
 
     // Mapear bebidas
@@ -199,7 +197,6 @@ export default function MenuPage() {
       descripcion: p.description,
       precio: p.price,
       imagen: p.imageUrl,
-      disponible: p.active,
     }));
 
     // Mapear postres
@@ -209,7 +206,6 @@ export default function MenuPage() {
       descripcion: p.description,
       precio: p.price,
       imagen: p.imageUrl,
-      disponible: p.active,
     }));
 
     return {
@@ -451,11 +447,6 @@ export default function MenuPage() {
                         </Badge>
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{plato.descripcion}</p>
-                      <div className="mt-auto pt-2">
-                        <Badge className={`text-xs ${plato.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
-                          {plato.disponible ? 'Disponible' : 'No disponible'}
-                        </Badge>
-                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -499,11 +490,6 @@ export default function MenuPage() {
                         </Badge>
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{bebida.descripcion}</p>
-                      <div className="mt-auto pt-2">
-                        <Badge className={`text-xs ${bebida.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
-                          {bebida.disponible ? 'Disponible' : 'No disponible'}
-                        </Badge>
-                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -547,11 +533,6 @@ export default function MenuPage() {
                         </Badge>
                       </div>
                       <p className="text-xs md:text-sm text-gray-600 text-left line-clamp-2">{postre.descripcion}</p>
-                      <div className="mt-auto pt-2">
-                        <Badge className={`text-xs ${postre.disponible ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
-                          {postre.disponible ? 'Disponible' : 'No disponible'}
-                        </Badge>
-                      </div>
                     </CardContent>
                   </Card>
                 ))}

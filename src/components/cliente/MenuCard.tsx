@@ -1,6 +1,5 @@
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { Badge } from '../../components/ui/badge';
 import type { Consumible } from '../../types';
 
 interface MenuCardProps {
@@ -21,12 +20,7 @@ export default function MenuCard({ consumible, onSelect }: MenuCardProps) {
         </div>
       )}
       <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <CardTitle className="text-lg">{consumible.nombre}</CardTitle>
-          <Badge variant={consumible.disponible ? 'default' : 'secondary'}>
-            {consumible.disponible ? 'Disponible' : 'No disponible'}
-          </Badge>
-        </div>
+        <CardTitle className="text-lg">{consumible.nombre}</CardTitle>
         {consumible.descripcion && (
           <CardDescription className="line-clamp-2">
             {consumible.descripcion}
@@ -37,7 +31,7 @@ export default function MenuCard({ consumible, onSelect }: MenuCardProps) {
         <span className="text-2xl font-bold text-orange-600">
           ${consumible.precio}
         </span>
-        {onSelect && consumible.disponible && (
+        {onSelect && (
           <Button onClick={() => onSelect(consumible)} size="sm">
             Agregar
           </Button>

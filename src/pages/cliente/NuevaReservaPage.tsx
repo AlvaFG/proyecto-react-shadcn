@@ -585,7 +585,7 @@ export default function NuevaReservaPage() {
             ) : (
               <Button
                 variant="outline"
-                onClick={() => setShowSuccessDialog(false)}
+                onClick={() => navigate('/cliente/dashboard')}
                 size="lg"
                 className="border-gray-300 text-gray-700 hover:bg-gray-50 px-4 md:px-6"
               >
